@@ -11,7 +11,7 @@ import pkg from './package.json';
  * build number is rewritten by scripts/prebuild-version.js (a Unix timestamp,
  * so it only ever grows) and is used for both platforms.
  */
-const build = { versionCode: 1791749908 };
+const build = { versionCode: 1791751667 };
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
@@ -54,6 +54,19 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     favicon: './assets/favicon.png',
   },
   plugins: [
+    // Release builds are signed with the Play upload key. The keystore path is
+    // relative to this project; the passwords come from `.env.local`, which
+    // Expo CLI loads for every command and git ignores. Without them, release
+    // builds keep the debug key and the plugin says so.
+    [
+      './plugins/withAndroidSigning.js',
+      {
+        storeFile: '../my-upload-key.keystore',
+        keyAlias: 'onesandzeros-key',
+        storePassword: process.env.ANDROID_KEYSTORE_PASSWORD,
+        keyPassword: process.env.ANDROID_KEY_PASSWORD,
+      },
+    ],
     // The mark on the brand dark background, matching the app icon. 120dp
     // keeps its corners inside the circular mask Android 12+ puts on the icon.
     ['expo-splash-screen', { image: './assets/splash-icon.png', imageWidth: 120, backgroundColor: '#282828' }],

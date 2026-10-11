@@ -209,6 +209,42 @@ TAPSIGNER path out of reach, and a hardware wallet needs the phone's own USB por
 build, sign and merge, the Esplora and Electrum backends, backups, verification and health
 checks — behaves normally.
 
+## Releasing
+
+Store builds go through [EAS](https://docs.expo.dev/build/introduction/), which holds the signing
+keys, builds iOS on its own Macs, and uploads to both stores. `eas.json` has the profiles:
+`production` (an Android app bundle and an App Store build), `preview` (an installable APK) and
+`development`.
+
+One-time setup:
+
+```bash
+npm install -g eas-cli
+eas login                      # the Expo account the project belongs to
+eas init                       # prints a project id — put it in app.config.ts under extra.eas.projectId
+```
+
+Google Play needs an app created in the Play Console first, and its **first upload made by hand**
+there (an `.aab` from `npm run build:android`). After that, a Google service account key with
+release access, saved as `secrets/play-service-account.json` (gitignored), lets `npm run
+submit:android` upload to the internal track as a draft. Play App Signing keeps the real signing
+key; EAS keeps the upload key.
+
+The App Store needs the app created in App Store Connect first. `npm run build:ios` then `npm run
+submit:ios` asks for your Apple ID the first time (or set an App Store Connect API key in
+`eas.json`), uploads to TestFlight, and the release itself is submitted from App Store Connect.
+Apple only accepts cryptocurrency wallets from developers enrolled as an organisation.
+
+Bump the version in `package.json` and run `npm run prebuild-version` before a store build: the
+build number is a timestamp, so it only ever grows, and `changelog.json` gets its entry.
+
+A GitHub release is a tag plus the APK from `npm run build:apk`:
+
+```bash
+git tag -a 0.1.0 -m "0.1.0" && git push origin 0.1.0
+gh release create 0.1.0 simple-multisig-0.1.0.apk --title 0.1.0 --notes-file notes.md
+```
+
 ## Tests
 
 ```bash

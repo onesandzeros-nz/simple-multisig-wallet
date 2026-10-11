@@ -30,8 +30,10 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# env files: signing passwords live in .env.local, never in the repo
+.env
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo
@@ -45,3 +47,6 @@ yarn-error.*
 
 # Gradle caches, in the local module too
 .gradle/
+
+# Store submission credentials (Google Play service account key, App Store Connect API key)
+secrets/

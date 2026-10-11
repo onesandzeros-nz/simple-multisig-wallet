@@ -67,7 +67,12 @@
         "smoke": "node scripts/rn-smoke.js",
         "test": "node --import tsx --test \"tests/*.test.ts\"",
         "prebuild-version": "node ./scripts/prebuild-version.js",
-        "prebuild:clean": "expo prebuild --clean"
+        "prebuild:clean": "expo prebuild --clean",
+        "build:android": "eas build --platform android --profile production",
+        "build:ios": "eas build --platform ios --profile production",
+        "build:apk": "eas build --platform android --profile preview",
+        "submit:android": "eas submit --platform android --profile production",
+        "submit:ios": "eas submit --platform ios --profile production"
     },
     "private": true
 }
