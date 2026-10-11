@@ -33,6 +33,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       NSCameraUsageDescription: 'Scan QR codes from hardware wallets to import keys.',
       // Self-hosted nodes are usually plain http on a LAN or VPN.
       NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
+      // Export compliance declaration: the app's cryptography is claimed as
+      // exempt (standard algorithms, software for money transactions), so
+      // TestFlight and App Store builds need no separate answer.
+      ITSAppUsesNonExemptEncryption: false,
     },
   },
   android: {
