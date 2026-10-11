@@ -18,7 +18,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // Shown in the launcher. Deliberately bland: with security mode on the
   // app passes as a messaging app, and the name must not give it away.
   name: 'SMS',
-  slug: 'simple-multisig',
+  slug: 'simple-multi-sig',
   version: pkg.version,
   orientation: 'portrait',
   icon: './assets/icon.png',
@@ -53,6 +53,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   web: {
     favicon: './assets/favicon.png',
   },
+  // The EAS project this app builds and submits under (`eas init`).
+  extra: { eas: { projectId: 'a0de8574-cf70-464d-bf62-e7cd3f90f35f' } },
   plugins: [
     // Release builds are signed with the Play upload key. The keystore path is
     // relative to this project; the passwords come from `.env.local`, which
