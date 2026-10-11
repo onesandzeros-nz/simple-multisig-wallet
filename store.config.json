@@ -1,0 +1,63 @@
+{
+  "configVersion": 0,
+  "apple": {
+    "version": "0.1.0",
+    "copyright": "2026 Ones and Zeros Technology Limited",
+    "categories": [
+      "FINANCE",
+      "UTILITIES"
+    ],
+    "info": {
+      "en-GB": {
+        "title": "SMS: Simple MultiSig Wallet",
+        "subtitle": "Shared bitcoin custody",
+        "description": "Simple Multisig is a bitcoin wallet where spending needs more than one key: 2 of 3, 3 of 5, or whatever you choose. It is built for the people who need shared custody most and get it least: a household, a small business, a group of friends holding funds together. One decision per screen, standards underneath, and no invented formats that would strand you in this app.\n\nKEYS\n• Create keys on the phone, by rolling dice or with the phone's secure generator. Recovery phrases live only in the device keychain and never in a cloud backup.\n• Restore a key from its recovery phrase.\n• Import public keys from Coldcard, TAPSIGNER, SeedSigner, Jade, Trezor, Ledger and BitBox02 by paste, file, QR code or NFC.\n• Health checks ask you to prove each key still works, on a schedule you choose.\n\nWALLETS\n• Private wallets stay entirely on the phone. Pass transactions around by QR code, file or your own messaging apps.\n• Group wallets coordinate over Nostr relays: keys, the finished wallet, transactions and a group chat move between members' phones. Once everyone has arrived the coordinator closes the roster, and the group moves onto a key the invite link cannot read.\n• Native segwit P2WSH, BIP48 derivation and BIP67 sorted keys, so addresses match Sparrow, Coldcard, Specter and Nunchuk exactly.\n• Import an existing wallet from a descriptor, a Coldcard or Sparrow file, or a JSON export.\n\nSPENDING\n• Balance, coins and history from a public server or your own node (mempool, Esplora or Electrum).\n• A stepped send flow with coin control, custom fee rates and RBF.\n• Sign on the phone or with a TAPSIGNER card over NFC. Signatures from hardware wallets merge automatically from a file or QR code.\n\nBACKUPS AND SAFETY\n• A multisig wallet needs every cosigner's public key, not just your phrase. Export a Sparrow-compatible file or a printable PDF, and verify a backup against the wallet at any time.\n• Guided setup for a first wallet.\n• Security mode disguises the app as a text-messaging app, with fictional conversations, until you send your PIN in a chat. Three wrong PINs erase every key and wallet.\n• Showing a recovery phrase or a group invite asks for Face ID, Touch ID or your passcode, and those screens block screenshots.\n\nPRIVACY\nNothing leaves the phone except what a wallet needs: requests to the chain server you choose, and encrypted messages to the Nostr relays a group uses. No accounts, no analytics, no trackers. Run your own node for the most privacy.\n\nSTATUS\nHobby-grade and not yet audited. Every format it produces is standard, so a wallet made here can be rebuilt in Sparrow from its descriptor. Read the security section of the project README before trusting it with funds you cannot afford to lose.",
+        "keywords": [
+          "bitcoin",
+          "multisig",
+          "wallet",
+          "cold storage",
+          "hardware wallet",
+          "nostr",
+          "coldcard",
+          "ledger",
+          "trezor",
+          "tapsigner"
+        ],
+        "promoText": "A bitcoin wallet where spending takes more than one key. For a household, a business or a group. The keys stay yours.",
+        "releaseNotes": "First release.",
+        "privacyPolicyUrl": "https://onesandzeros.nz/privacy-policy",
+        "supportUrl": "https://onesandzeros.nz",
+        "marketingUrl": "https://onesandzeros.nz"
+      }
+    },
+    "advisory": {
+      "alcoholTobaccoOrDrugUseOrReferences": "NONE",
+      "contests": "NONE",
+      "gamblingSimulated": "NONE",
+      "horrorOrFearThemes": "NONE",
+      "matureOrSuggestiveThemes": "NONE",
+      "medicalOrTreatmentInformation": "NONE",
+      "profanityOrCrudeHumor": "NONE",
+      "sexualContentGraphicAndNudity": "NONE",
+      "sexualContentOrNudity": "NONE",
+      "violenceCartoonOrFantasy": "NONE",
+      "violenceRealistic": "NONE",
+      "violenceRealisticProlongedGraphicOrSadistic": "NONE",
+      "gambling": false,
+      "unrestrictedWebAccess": false,
+      "kidsAgeBand": null,
+      "seventeenPlus": false,
+      "ageRatingOverride": "NONE",
+      "koreaAgeRatingOverride": "NONE"
+    },
+    "review": {
+      "firstName": "Robert",
+      "lastName": "Clarkson",
+      "email": "studio@onesandzeros.nz",
+      "phone": "+64 22 021 0121",
+      "demoRequired": false,
+      "notes": "The app has no accounts or logins; everything runs on the device. To review: open the app, create a key with \"Create a key on this phone\" (the secure generator is fastest), then Wallets, plus, and either the guided setup or \"Choose for myself\". Testnet mode in Settings lets you use test coins. Security mode (Settings, Security) is off by default; it is an opt-in feature that makes the app open as a plain messaging app with fictional contacts until the user sends their 6-digit PIN in a chat, so that someone forcing a phone open does not see a wallet. The messaging app is not real: it contacts no one and sends nothing. Hardware wallets connect by QR, file or NFC on iOS; USB connections are Android only."
+    }
+  }
+}
