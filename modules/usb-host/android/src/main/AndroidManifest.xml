@@ -1,0 +1,4 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Not required: a phone without USB host simply never offers the USB buttons. -->
+  <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+</manifest>

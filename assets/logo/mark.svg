@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 180">
+  <!-- Simple Multi Sig mark: three message boxes, each cut with its own key teeth. -->
+  <path d="M15 0 H145 V33 L140 44 H134 L127 30 H120 L113 44 H107 L102 38 H95 L90 44 H84 L78 34 H70 L64 44 H15 Z" fill="#ffffff"/>
+  <path d="M55 62 H185 V106 H136 L129 96 H120 L113 106 H108 L102 90 H96 L90 106 H84 L78 99 H69 L63 106 H61 L55 95 Z" fill="#FF6D00"/>
+  <path d="M15 124 H145 V157 L140 168 H134 L127 158 H120 L113 168 H107 L102 152 H94 L89 168 H83 L77 162 H69 L63 168 H15 Z" fill="#ffffff"/>
+</svg>
