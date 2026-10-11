@@ -1,0 +1,30 @@
+Simple Multisig is a bitcoin wallet where spending needs more than one key: 2 of 3, 3 of 5, or whatever you choose. It is built for the people who need shared custody most and get it least: a household, a small business, a group of friends holding funds together. One decision per screen, standards underneath, and no invented formats that would strand you in this app.
+
+KEYS
+• Create keys on the phone, by rolling dice or with the phone's secure generator. Recovery phrases live only in the device keystore and never in a cloud backup.
+• Restore a key from its recovery phrase.
+• Import public keys from Coldcard, TAPSIGNER, SeedSigner, Jade, Trezor, Ledger and BitBox02 by paste, file, QR code, NFC or a USB cable.
+• Health checks ask you to prove each key still works, on a schedule you choose.
+
+WALLETS
+• Private wallets stay entirely on the phone. Pass transactions around by QR code, file or your own messaging apps.
+• Group wallets coordinate over Nostr relays: keys, the finished wallet, transactions and a group chat move between members' phones. Once everyone has arrived the coordinator closes the roster, and the group moves onto a key the invite link cannot read.
+• Native segwit P2WSH, BIP48 derivation and BIP67 sorted keys, so addresses match Sparrow, Coldcard, Specter and Nunchuk exactly.
+• Import an existing wallet from a descriptor, a Coldcard or Sparrow file, or a JSON export.
+
+SPENDING
+• Balance, coins and history from a public server or your own node (mempool, Esplora or Electrum).
+• A stepped send flow with coin control, custom fee rates and RBF.
+• Sign on the phone, with a TAPSIGNER card over NFC, or with a Ledger, Trezor or BitBox02 over USB. Signatures merge automatically.
+
+BACKUPS AND SAFETY
+• A multisig wallet needs every cosigner's public key, not just your phrase. Export a Sparrow-compatible file or a printable PDF, and verify a backup against the wallet at any time.
+• Guided setup for a first wallet.
+• Security mode disguises the app as a text-messaging app, with fictional conversations, until you send your PIN in a chat. Three wrong PINs erase every key and wallet.
+• Showing a recovery phrase or a group invite asks for your fingerprint, face or passcode, and those screens block screenshots.
+
+PRIVACY
+Nothing leaves the phone except what a wallet needs: requests to the chain server you choose, and encrypted messages to the Nostr relays a group uses. No accounts, no analytics, no trackers. Run your own node for the most privacy.
+
+STATUS
+Hobby-grade and not yet audited. Every format it produces is standard, so a wallet made here can be rebuilt in Sparrow from its descriptor. Read the security section of the project README before trusting it with funds you cannot afford to lose.
