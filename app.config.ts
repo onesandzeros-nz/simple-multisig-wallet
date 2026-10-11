@@ -19,6 +19,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // app passes as a messaging app, and the name must not give it away.
   name: 'SMS',
   slug: 'simple-multi-sig',
+  // The Expo account the EAS project belongs to.
+  owner: 'onesandzeros-nzs-team',
   version: pkg.version,
   orientation: 'portrait',
   icon: './assets/icon.png',
