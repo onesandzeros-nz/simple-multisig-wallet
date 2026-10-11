@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy for Ones and Zeros Apps</title>
+</head>
+<body>
+  <article>
+    <h1>Privacy Policy for Ones and Zeros Apps</h1>
+    <p><strong>Last updated: 12 October 2026</strong></p>
+
+    <p>Ones and Zeros Technology Limited (&ldquo;we&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;) of Queenstown, New Zealand, makes mobile apps. This policy explains what each of our apps does with information, and it applies to every app we publish under the Ones and Zeros name unless an app shows its own policy. It is written to comply with the New Zealand Privacy Act 2020 and with the policies of the Apple App Store and Google Play.</p>
+
+    <h2>The short version</h2>
+    <p>Our apps do not collect personal information. We run no accounts, no analytics, no advertising and no crash reporting, and nothing you do in an app is sent to us. Where an app connects to the internet, it connects only to services you can see and choose, and this policy says which.</p>
+
+    <h2>What applies to every app</h2>
+    <p><strong>No collection.</strong> We do not collect, store or transmit personal information about you. We have no servers that receive data from the apps, so we have nothing to sell, share or lose.</p>
+    <p><strong>No accounts.</strong> None of our apps asks you to sign up or sign in with us.</p>
+    <p><strong>No tracking.</strong> The apps contain no analytics, advertising, tracking or crash-reporting software, from us or from anyone else.</p>
+    <p><strong>Your data stays on your device.</strong> Anything an app keeps, it keeps on your phone. We cannot see it, and deleting the app deletes it, except where this policy says a secret lives in the phone&rsquo;s secure keystore and is removed when you remove it in the app.</p>
+    <p><strong>App stores.</strong> Apple and Google handle the download, payment and update of our apps under their own privacy policies. They may tell us aggregate figures such as how many people installed an app, never who.</p>
+    <p><strong>Permissions.</strong> An app asks for a device permission only for the feature that needs it, at the moment you use that feature, and uses it for nothing else. Each app&rsquo;s permissions are listed below.</p>
+    <p><strong>Open source.</strong> Where an app&rsquo;s source code is published, as Simple Multisig&rsquo;s is on GitHub, you can check for yourself that it does what this policy says.</p>
+
+    <h2>Simple Multisig (&ldquo;SMS&rdquo;)</h2>
+    <p>Simple Multisig is a bitcoin wallet where spending needs more than one key. Everything it stores, it stores on your phone.</p>
+
+    <h3>What the app stores on your phone</h3>
+    <ul>
+      <li>Recovery phrases, group keys and your security-mode PIN record are kept in the phone&rsquo;s secure keystore (iOS Keychain or Android Keystore), marked as never to be backed up to the cloud.</li>
+      <li>Wallet details (public keys, descriptors, balances, transaction history), group chat, pending transactions and settings are kept in the app&rsquo;s own storage. Android cloud backup is turned off for the app, and on iOS this storage is marked as excluded from iCloud and iTunes backups.</li>
+      <li>If you turn on security mode, the app stores a fictional text-message inbox on your phone. The contacts and conversations in it are invented; they are not real people and nothing you type there is sent anywhere.</li>
+    </ul>
+
+    <h3>Who the app talks to, and what they can see</h3>
+    <ul>
+      <li><em>Blockchain server.</em> To show balances and send transactions the app queries a server. By default this is a public server you choose in Settings (blockstream.info, mempool.space or mempool.emzy.de, each run by its own operator), or your own node. That server sees your IP address and the wallet addresses it is asked about, and so can infer balances and history. Running your own node removes this.</li>
+      <li><em>Nostr relays, for group wallets only.</em> Members of a group wallet coordinate through public Nostr relays (relay.damus.io, nos.lol and relay.primal.net by default, or relays you add). What the app publishes there is encrypted so that only group members can read it. A relay sees your IP address, that encrypted data, and when it was sent, and relays generally keep what they are sent indefinitely. The app can ask a relay to delete its own messages, but relays are not obliged to comply.</li>
+      <li><em>The other members of your group.</em> Within a group you share, by your own actions, the name you chose, your public keys, the wallet&rsquo;s details, transactions to be signed and chat messages. These go to the other members, encrypted, through the relays above. Choose your group members as you would choose who to hand a wallet to.</li>
+      <li><em>Hardware wallets.</em> A Ledger, Trezor, BitBox02 or TAPSIGNER connected over USB or NFC sees the transactions you ask it to sign. The app keeps a pairing key for a BitBox02 and a wallet approval for a Ledger in the secure keystore so you need not repeat those steps.</li>
+    </ul>
+    <p>Private wallets, which do not use a group, never touch a relay.</p>
+
+    <h3>Permissions the app may ask for</h3>
+    <ul>
+      <li><em>Camera</em>: to scan QR codes for keys, wallets, transactions and payment addresses.</li>
+      <li><em>NFC</em>: to read a TAPSIGNER card or an NFC tag carrying a transaction.</li>
+      <li><em>USB</em> (Android): to connect a hardware wallet.</li>
+      <li><em>Biometrics or passcode</em>: to confirm it is you before a recovery phrase or group invite is shown. The check is done by the phone; the app never sees your fingerprint or face.</li>
+      <li><em>Files and sharing</em>: only when you choose to import or export a wallet, transaction or backup.</li>
+    </ul>
+    <p><strong>Security mode.</strong> Three wrong PINs in a row erase every key, wallet, group and chat on the phone. This is a feature you turn on yourself, and it is described in the app before you do.</p>
+
+    <h2>Boltcard NFC Programmer</h2>
+    <p>Boltcard NFC Programmer writes Lightning Network payment cards. The app does not collect, store or transmit any personal information. All operations, including reading and writing NFC cards and reading a QR code, take place locally on your device.</p>
+
+    <h3>Permissions the app may ask for</h3>
+    <ul>
+      <li><em>NFC</em>: to read from and write to compatible NFC tags and cards, such as NTAG424 DNA cards.</li>
+      <li><em>Camera</em>: to read the URL and key information used to program a card.</li>
+    </ul>
+    <p>The app does not integrate with or use any third-party services, libraries or SDKs that collect data. Since no data is collected or transmitted, there is no server-side data for a breach to expose.</p>
+
+    <h2>Children</h2>
+    <p>Our apps are not directed at children and do not knowingly collect information from anyone, children included.</p>
+
+    <h2>Your rights</h2>
+    <p>Under the Privacy Act 2020 you can ask us what personal information we hold about you and ask for it to be corrected. Because our apps send us nothing, we do not expect to hold any; if you ask, we will confirm that and explain what the app keeps on your own device. If you are not satisfied with our response you may complain to the Office of the Privacy Commissioner, <a href="https://privacy.org.nz">privacy.org.nz</a>.</p>
+
+    <h2>Changes to this policy</h2>
+    <p>When we change this policy we update the date at the top and publish the new version at the same address. Continued use of an app after a change means you accept the updated policy.</p>
+
+    <h2>Contact</h2>
+    <address>
+      Ones and Zeros Technology Limited<br>
+      Queenstown, New Zealand<br>
+      Email: <a href="mailto:studio@onesandzeros.nz">studio@onesandzeros.nz</a>
+    </address>
+  </article>
+</body>
+</html>
