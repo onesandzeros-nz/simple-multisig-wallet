@@ -1,0 +1,4 @@
+metadata_sources:
+    - github
+    - playstore
+repository: https://github.com/onesandzeros-nz/simple-multisig-wallet
