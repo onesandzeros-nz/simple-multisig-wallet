@@ -22,6 +22,18 @@ export interface QrProgress {
   progress?: string;
 }
 
+/**
+ * Progress as parts collected, not the library's estimate. The estimate
+ * counts every frame seen, repeats included, and tops out at 99%; devices
+ * such as Jade loop a fixed set of frames, so a scan that keeps missing one
+ * frame would show "99%" indefinitely while nothing was happening.
+ */
+function urProgress(decoder: URDecoder): string {
+  const expected = decoder.expectedPartCount();
+  if (expected === 0) return `${Math.round(decoder.estimatedPercentComplete() * 100)}%`;
+  return `${decoder.receivedPartIndexes().length} of ${expected} parts`;
+}
+
 export function createQrAssembler() {
   let mode: 'unknown' | 'ur' | 'parts' = 'unknown';
   let urDecoder: URDecoder | null = null;
@@ -41,9 +53,35 @@ export function createQrAssembler() {
       if (mode !== 'ur' || !urDecoder) {
         throw new Error('This QR code belongs to a different transfer — start again.');
       }
-      urDecoder.receivePart(data.toLowerCase());
+      const frame = data.toLowerCase();
+      let accepted: boolean;
+      try {
+        accepted = urDecoder.receivePart(frame);
+      } catch (e) {
+        // A frame the camera misread. Mid-transfer it is noise — the next
+        // pass of the animation brings the frame round again — so keep what
+        // has been collected. With nothing collected yet, say what is wrong.
+        if (urDecoder.expectedPartCount() === 0) throw e;
+        return { done: false, progress: urProgress(urDecoder) };
+      }
+      if (!accepted) {
+        // A well-formed frame the decoder turned away: it belongs to another
+        // transfer (a different transaction, or the same one re-encoded). A
+        // device only ever shows one animation, so follow it instead of
+        // waiting forever for frames of the old one.
+        const fresh = new URDecoder();
+        if (!fresh.receivePart(frame)) return { done: false, progress: urProgress(urDecoder) };
+        urDecoder = fresh;
+      }
+      if (urDecoder.isError()) {
+        // Every part arrived but the message failed its checksum: a frame
+        // was misread as another valid frame. The decoder never reports
+        // itself complete in this state, so without this check the scan sat
+        // at "99%" forever. It cannot recover; the caller restarts clean.
+        throw new Error('The animated QR did not read cleanly — hold the camera steady on it; starting again.');
+      }
       if (!urDecoder.isComplete()) {
-        return { done: false, progress: `${Math.round(urDecoder.estimatedPercentComplete() * 100)}%` };
+        return { done: false, progress: urProgress(urDecoder) };
       }
       if (!urDecoder.isSuccess()) {
         throw new Error(`Could not read the animated QR: ${urDecoder.resultError()}`);

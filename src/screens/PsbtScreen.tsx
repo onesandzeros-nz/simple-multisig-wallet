@@ -33,6 +33,8 @@ import { DEFAULT_MAX_ATTEMPTS } from '../lib/nostr/outbox';
 import { cancelNfcSession, nfcAvailable, readPsbtFromTag, signWithTapsigner, writePsbtToTag } from '../lib/nfc';
 import { isHardwareKind, kindName, signPsbtWithDevice } from '../lib/hw';
 import { usbAvailable } from '../lib/hw/usb';
+import { exportPsbtFile } from '../lib/exportActions';
+import { exportBaseName } from '../lib/walletExport';
 import { Cosigner, SignerKey } from '../lib/types';
 import { RootStackParamList } from '../navigation';
 
@@ -238,6 +240,21 @@ export default function PsbtScreen({ navigation, route }: Props) {
 
   const share = () => Share.share({ message: record.base64 });
 
+  /** The transaction as a .psbt file, for another wallet or to keep. */
+  const exportFile = async () => {
+    let suffix = '';
+    try {
+      suffix = `-${unsignedTxId(parsePsbt(record.base64, wallet.network)).slice(0, 8)}`;
+    } catch {
+      // Unparseable here means unparseable everywhere; the file still goes out.
+    }
+    try {
+      await exportPsbtFile(record.base64, `${exportBaseName(wallet)}${suffix}`);
+    } catch (e: any) {
+      showError('psbt:export-file', e);
+    }
+  };
+
   /**
    * The transaction wrapped in instructions, for a cosigner who is a person.
    * On their screen this phone's key is a cosigner they cannot sign for, so
@@ -247,7 +264,7 @@ export default function PsbtScreen({ navigation, route }: Props) {
     const mine = wallet.cosigners.find((x) => keys.find((k) => k.id === x.keyId)?.type === 'local');
     const wayBack = mine
       ? `Then, on the same screen, tap "Get signature" next to ${mine.name} and send it back to me.`
-      : 'Then tap "Other ways to sign or share", "Export transaction", and send me what it shares.';
+      : 'Then tap "Other ways to sign or share", "Share as text", and send me what it shares.';
     return Share.share({
       message:
         `Please sign a transaction from our "${wallet.name}" wallet in Simple Multisig.\n\n` +
@@ -707,7 +724,7 @@ export default function PsbtScreen({ navigation, route }: Props) {
                   {step.kind === 'person' ? (
                     <Button title={`Send to ${c.name}`} icon="share-outline" variant="secondary" compact onPress={() => sendTo(c)} />
                   ) : (
-                    <Button title="Export as a file" icon="document-outline" variant="secondary" compact onPress={share} />
+                    <Button title="Export as a file" icon="document-outline" variant="secondary" compact onPress={exportFile} />
                   )}
                   <Button title="Show as QR code" icon="qr-code-outline" variant="secondary" compact onPress={() => setQrOpen(true)} />
                   {step.kind === 'device' && hasNfc && nfcRoundTrip()}
@@ -927,7 +944,8 @@ export default function PsbtScreen({ navigation, route }: Props) {
       />
       {moreOpen && (
         <>
-          <Button title="Export transaction" icon="share-outline" variant="secondary" onPress={share} />
+          <Button title="Export as a file" icon="document-outline" variant="secondary" onPress={exportFile} />
+          <Button title="Share as text" icon="share-outline" variant="secondary" onPress={share} />
           {hasUsb && !ready && (
             <Button
               title="Sign with a USB device"

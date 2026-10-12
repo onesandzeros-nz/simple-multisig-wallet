@@ -11,7 +11,7 @@ import pkg from './package.json';
  * build number is rewritten by scripts/prebuild-version.js (a Unix timestamp,
  * so it only ever grows) and is used for both platforms.
  */
-const build = { versionCode: 1791751667 };
+const build = { versionCode: 1791846684 };
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,

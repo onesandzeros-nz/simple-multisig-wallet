@@ -1,6 +1,14 @@
 {
     "versions": [
         {
+            "version": "0.1.1",
+            "date": "2026-10-13",
+            "features": [
+                "Animated QR scanning shows parts collected, follows a re-shown transaction and recovers from a misread frame instead of sitting at 99%",
+                "Export transaction as a real .psbt file (Android share-to-Files works)"
+            ]
+        },
+        {
             "version": "0.1.0",
             "date": "2026-10-11",
             "features": [

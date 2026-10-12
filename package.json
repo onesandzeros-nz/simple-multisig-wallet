@@ -1,6 +1,6 @@
 {
     "name": "scaffold",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "main": "index.ts",
     "dependencies": {
         "@bitcoinerlab/secp256k1": "^1.2.0",

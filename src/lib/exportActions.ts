@@ -14,11 +14,22 @@ async function qrSvg(data: string): Promise<string> {
   return QRCode.toString(data, { type: 'svg', errorCorrectionLevel: 'M', margin: 1 });
 }
 
-async function shareFile(uri: string, mimeType: string, title: string): Promise<void> {
+async function shareFile(uri: string, mimeType: string, title: string, uti = mimeType): Promise<void> {
   if (!(await Sharing.isAvailableAsync())) {
     throw new Error('This device has no way to share files.');
   }
-  await Sharing.shareAsync(uri, { mimeType, dialogTitle: title, UTI: mimeType });
+  await Sharing.shareAsync(uri, { mimeType, dialogTitle: title, UTI: uti });
+}
+
+/**
+ * Writes the transaction as a binary .psbt file — the form Sparrow, Coldcard,
+ * Nunchuk and Electrum open — and hands it to the share sheet. A text share
+ * has no file behind it, so on Android "save to Files" or Drive refuses it.
+ */
+export async function exportPsbtFile(base64: string, baseName: string): Promise<void> {
+  const uri = `${FileSystem.cacheDirectory}${baseName}.psbt`;
+  await FileSystem.writeAsStringAsync(uri, base64.trim(), { encoding: FileSystem.EncodingType.Base64 });
+  await shareFile(uri, 'application/octet-stream', `${baseName}.psbt`, 'public.data');
 }
 
 /**

@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { UR, UREncoder } from '@ngraveio/bc-ur';
+import { FountainEncoderPart } from '@ngraveio/bc-ur/dist/fountainEncoder';
+import Bytewords from '@ngraveio/bc-ur/dist/bytewords';
 import * as bs58check from 'bs58check';
 import { Buffer } from 'buffer';
 import { createQrAssembler } from '../src/lib/qrParts';
@@ -287,5 +289,97 @@ describe('single-key QR exports (Jade, Keystone, Passport)', () => {
   it('still refuses a key QR with no extended key in it', () => {
     const rawPubkeyOnly = new Map<number, any>([[3, Buffer.alloc(33, 2)]]);
     assert.throws(() => cryptoHdkeyToKeyExpression(encodeCbor(rawPubkeyOnly)), /raw public key/i);
+  });
+});
+
+describe('Animated QR robustness', () => {
+  // Jade shows every pure frame plus one fountain frame per three, as a fixed
+  // loop; a missed pure frame only comes back on the next pass.
+  const psbtBytes = Buffer.from(Array.from({ length: 600 }, (_, i) => (i * 7) % 251));
+  const psbtBase64 = psbtBytes.toString('base64');
+
+  function pureFrames(base64: string): string[] {
+    const enc = createPsbtUrEncoder(base64, 40);
+    return Array.from({ length: urFrameCount(enc) }, () => enc.nextPart());
+  }
+
+  it('reports parts collected, not a percentage that pins at 99%', () => {
+    const frames = pureFrames(psbtBase64);
+    const n = frames.length;
+    assert.ok(n >= 6, `expected a multi-frame transfer, got ${n}`);
+    const missing = Math.floor(n / 2);
+    const asm = createQrAssembler();
+    let last: ReturnType<typeof asm.receive> | undefined;
+    // Two full passes with the same frame missed each time: the old estimate
+    // counted every repeat and sat at "99%"; the count stays honest.
+    for (let pass = 0; pass < 2; pass++) {
+      frames.forEach((f, i) => {
+        if (i === missing) return;
+        last = asm.receive(f);
+        assert.equal(last.done, false);
+      });
+    }
+    assert.equal(last?.progress, `${n - 1} of ${n} parts`);
+    const final = asm.receive(frames[missing]);
+    assert.ok(final.done);
+    assert.equal(final.text, psbtBase64);
+  });
+
+  it('follows a new transfer instead of waiting forever for the old one', () => {
+    const otherBytes = Buffer.from(Array.from({ length: 600 }, (_, i) => (i * 11 + 3) % 251));
+    const otherBase64 = otherBytes.toString('base64');
+    const asm = createQrAssembler();
+    const first = pureFrames(psbtBase64);
+    assert.equal(asm.receive(first[0]).done, false);
+    assert.equal(asm.receive(first[1]).done, false);
+    // The device now shows a different transaction.
+    let result: ReturnType<typeof asm.receive> | undefined;
+    for (const f of pureFrames(otherBase64)) {
+      result = asm.receive(f);
+      if (result.done) break;
+    }
+    assert.ok(result?.done, 'second transfer never completed');
+    assert.equal(result!.text, otherBase64);
+  });
+
+  it('a frame misread as another valid frame raises an error instead of hanging', () => {
+    const frames = pureFrames(psbtBase64);
+    const n = frames.length;
+    // Rebuild one frame with its payload bytes altered but every header field
+    // intact, so the decoder accepts it and the final checksum fails.
+    const [, seq, body] = frames[1].split('/');
+    const part = FountainEncoderPart.fromCBOR(Bytewords.decode(body, Bytewords.STYLES.MINIMAL));
+    const fragment = Buffer.from(part.fragment);
+    fragment[0] ^= 0xff;
+    const bad = new FountainEncoderPart(part.seqNum, part.seqLength, part.messageLength, part.checksum, fragment);
+    const badFrame = (UREncoder as any).encodePart('crypto-psbt', bad) as string;
+    assert.equal(badFrame.split('/')[1], seq);
+
+    const asm = createQrAssembler();
+    assert.throws(
+      () => {
+        frames.forEach((f, i) => asm.receive(i === 1 ? badFrame : f));
+      },
+      /did not read cleanly/
+    );
+    // After a clean restart the same frames decode.
+    const again = createQrAssembler();
+    let result: ReturnType<typeof again.receive> | undefined;
+    for (const f of frames) result = again.receive(f);
+    assert.ok(result?.done);
+    assert.equal(result!.text, psbtBase64);
+    assert.equal(n, frames.length);
+  });
+
+  it('ignores a garbled frame mid-transfer rather than starting over', () => {
+    const frames = pureFrames(psbtBase64);
+    const asm = createQrAssembler();
+    assert.equal(asm.receive(frames[0]).done, false);
+    const after = asm.receive('ur:crypto-psbt/2-99/notbytewordsatall');
+    assert.equal(after.done, false);
+    assert.equal(after.progress, `1 of ${frames.length} parts`);
+    let result: ReturnType<typeof asm.receive> | undefined;
+    for (const f of frames) result = asm.receive(f);
+    assert.ok(result?.done);
   });
 });
