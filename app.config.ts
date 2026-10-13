@@ -11,7 +11,7 @@ import pkg from './package.json';
  * build number is rewritten by scripts/prebuild-version.js (a Unix timestamp,
  * so it only ever grows) and is used for both platforms.
  */
-const build = { versionCode: 1791846684 };
+const build = { versionCode: 1791883829 };
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
@@ -88,6 +88,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         nfcPermission: 'Tap a TAPSIGNER card to import its key.',
         // Coinkite's ISO7816 application id, so iOS lets us select the card.
         selectIdentifiers: ['F0436F696E6B697465434152447631'],
+        // The entitlement's NDEF value is gone from Apple's docs and App Store
+        // Connect rejects a binary that lists it (ITMS-90778); TAG covers the
+        // NDEF sessions the Coldcard code uses on iOS 13 and later.
+        includeNdefEntitlement: false,
       },
     ],
     // Plain-http self-hosted servers (see the Settings screen warning).
