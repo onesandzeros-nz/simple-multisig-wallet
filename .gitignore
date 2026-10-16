@@ -50,3 +50,6 @@ yarn-error.*
 
 # Store submission credentials (Google Play service account key, App Store Connect API key)
 secrets/
+
+# EAS local signing credentials (keystore path + passwords), see eas.json credentialsSource
+credentials.json
