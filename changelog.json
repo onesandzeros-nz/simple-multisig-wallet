@@ -1,6 +1,13 @@
 {
     "versions": [
         {
+            "version": "0.1.2",
+            "date": "2026-10-16",
+            "features": [
+                "Android: dropped the photo library permission a library had declared; the app never used it"
+            ]
+        },
+        {
             "version": "0.1.1",
             "date": "2026-10-13",
             "features": [
