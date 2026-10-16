@@ -1,8 +1,23 @@
 # How the App Store screenshots were made
 
-The images in `../` are 1320×2868 PNGs from the iPhone 17 Pro Max simulator
-(iOS 26.5), Apple's 6.9" size. App Store Connect scales them for the smaller
-iPhone sizes, so no other set is needed; the app does not support iPad.
+The images in `../iphone-6.9/` are 1320×2868 PNGs from the iPhone 17 Pro Max
+simulator (iOS 26.5), Apple's 6.9" size. The app does not support iPad.
+
+App Store Connect now requires the medium Dynamic Island size (1206×2622 or
+1179×2556) and treats the 6.9" size as optional, so `../iphone-6.3/` holds
+the same shots scaled to 1206×2622 with the alpha channel dropped (Apple
+rejects transparency). Regenerate it from the 6.9" set with:
+
+    for f in store/apple/screenshots/iphone-6.9/*.png; do
+      magick "$f" -resize 1206x2622^ -gravity center -extent 1206x2622 \
+        -alpha off -depth 8 "PNG24:store/apple/screenshots/iphone-6.3/$(basename "$f")"
+    done
+
+(and the same for `extra/`). Upload the 6.3" set; add the 6.9" set too if
+you want the large phones to show native-resolution images.
+
+The product page header and search results artwork in `../../promo/` are
+built by `scripts/make-apple-promo.sh` from the logo mark and `02-wallet.png`.
 
 The wallet data is seeded, not real: `seed.ts` writes keys, wallets, groups,
 chats and one pending transaction into the app's AsyncStorage manifest, and
