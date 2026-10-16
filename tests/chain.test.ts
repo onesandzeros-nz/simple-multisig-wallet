@@ -2,14 +2,15 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BackendConfig,
+  backendLabel,
   DEFAULT_BACKEND_SETTINGS,
   DEFAULT_PUBLIC_SERVER_ID,
-  PUBLIC_SERVERS,
-  backendLabel,
   effectiveBackend,
+  explorerName,
   isPublicBackend,
   looksPrivateHost,
   migrateBackendSettings,
+  PUBLIC_SERVERS,
   publicServerById,
   sameBackend,
   setBackend,
@@ -123,9 +124,31 @@ describe('explorer links', () => {
   it('appends a well-formed txid and refuses anything else', () => {
     setBackend({ kind: 'esplora', url: null });
     const txid = 'a'.repeat(64);
-    assert.equal(txExplorerUrl('mainnet', txid), `https://blockstream.info/tx/${txid}`);
+    assert.equal(txExplorerUrl('mainnet', txid), `https://mempool.space/tx/${txid}`);
     // Server-supplied junk never ends up inside the URL path.
-    assert.equal(txExplorerUrl('mainnet', 'https://evil.example/x'), 'https://blockstream.info');
-    assert.equal(txExplorerUrl('mainnet', '../../tx'), 'https://blockstream.info');
+    assert.equal(txExplorerUrl('mainnet', 'https://evil.example/x'), 'https://mempool.space');
+    assert.equal(txExplorerUrl('mainnet', '../../tx'), 'https://mempool.space');
+  });
+
+  it('opens on mempool.space for every public server and for Electrum', () => {
+    const txid = 'b'.repeat(64);
+    for (const server of PUBLIC_SERVERS) {
+      setBackend(server.backend);
+      assert.equal(txExplorerUrl('mainnet', txid), `https://mempool.space/tx/${txid}`, server.id);
+      assert.equal(txExplorerUrl('testnet', txid), `https://mempool.space/testnet/tx/${txid}`, server.id);
+      assert.equal(explorerName(), 'mempool.space');
+    }
+    setBackend({ kind: 'electrum', host: 'electrum.example', port: 50002, tls: true });
+    assert.equal(txExplorerUrl('mainnet', txid), `https://mempool.space/tx/${txid}`);
+    assert.equal(explorerName(), 'mempool.space');
+  });
+
+  it("opens on the user's own server when one is connected", () => {
+    const txid = 'c'.repeat(64);
+    setBackend({ kind: 'esplora', url: 'http://umbrel.local:3006/' });
+    assert.equal(txExplorerUrl('mainnet', txid), `http://umbrel.local:3006/tx/${txid}`);
+    assert.equal(txExplorerUrl('testnet', txid), `http://umbrel.local:3006/testnet/tx/${txid}`);
+    assert.equal(explorerName(), 'umbrel.local:3006');
+    setBackend({ kind: 'esplora', url: null });
   });
 });

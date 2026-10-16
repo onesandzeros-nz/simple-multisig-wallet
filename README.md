@@ -375,7 +375,8 @@ modules/
 whose hostnames the app verifies), or the user's own. That can be any Esplora or
 mempool.space-compatible instance, or an Electrum server (electrs, Fulcrum, ElectrumX) over TCP or
 TLS — meant for a server you run on a network you control, since the app cannot verify an Electrum
-server's hostname (see Known weaknesses). The Electrum adapter
+server's hostname (see Known weaknesses). Links to transactions open on mempool.space, or on
+your own server when one is connected, whichever server does the scanning. The Electrum adapter
 reconstructs what Esplora would have returned — history is only txids and heights there, and
 transactions arrive as raw hex, so previous outputs are fetched and decoded to work out spends and
 fees, with immutable results cached.

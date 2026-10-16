@@ -305,19 +305,29 @@ export async function testBackend(candidate: BackendConfig): Promise<number> {
   }
 }
 
+/** The explorer links open on when the wallet has no web explorer of its own. */
+const MEMPOOL_WEB = 'https://mempool.space';
+
 /**
- * Where to send someone to look at a transaction. An Electrum server has no
- * web interface, so fall back to mempool.space for links only.
+ * Where links open. A server the user runs themselves is normally a mempool
+ * instance with its own web interface, so links go there and the lookup
+ * stays off the public internet. Otherwise mempool.space: the public picks
+ * are chosen for their API, not their website, and an Electrum server has
+ * no website at all.
  */
+function explorerBase(network: NetworkName): string {
+  if (config.kind === 'esplora' && config.url && !isPublicBackend(config)) {
+    return esploraWebBase(network);
+  }
+  return network === 'mainnet' ? MEMPOOL_WEB : `${MEMPOOL_WEB}/testnet`;
+}
+
+/** Where to send someone to look at a transaction. */
 export function txExplorerUrl(network: NetworkName, txid: string): string {
   // A txid usually comes from the server — never trust its shape inside a
   // URL. Anything that is not 64 hex chars degrades to the explorer root.
   const safe = /^[0-9a-f]{64}$/i.test(txid) ? txid : '';
-  if (config.kind === 'electrum') {
-    const root = network === 'mainnet' ? 'https://mempool.space' : 'https://mempool.space/testnet';
-    return safe ? `${root}/tx/${safe}` : root;
-  }
-  const base = esploraWebBase(network);
+  const base = explorerBase(network);
   return safe ? `${base}/tx/${safe}` : base;
 }
 
@@ -328,11 +338,11 @@ export function explorerIsPublic(): boolean {
 
 /** The site a transaction link opens on, for button labels. */
 export function explorerName(): string {
-  if (config.kind === 'electrum') return 'mempool.space';
+  const base = explorerBase('mainnet');
   try {
-    return new URL(esploraServer()).host;
+    return new URL(base).host;
   } catch {
-    return esploraServer();
+    return base;
   }
 }
 
