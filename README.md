@@ -11,6 +11,8 @@ Wallets are **2-of-3**, **3-of-5**, or whatever M-of-N you choose. Keys can live
 hardware wallet, or with other members of your group. Coordination happens over QR codes and files,
 or — optionally — over Nostr relays.
 
+Inspired by Sparrow Wallet, Bitkey and Nunchuk.
+
 > **Status: hobby-grade.** The wallet engine is well covered by tests and every format it produces
 > is standard, but this has not been audited or run against meaningful funds. Read
 > [Security and privacy](#security-and-privacy) before trusting it with anything you cannot lose.
