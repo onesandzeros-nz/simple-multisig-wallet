@@ -190,8 +190,13 @@ established defences at their new call sites. 822 tests passing (1 skipped),
   relays are capped at `MAX_RELAYS` (20, the same cap an invite has).
   `RECORD_AUDIO` and `SYSTEM_ALERT_WINDOW` are removed from the manifest via
   `android.blockedPermissions` (`expo config --type introspect` shows
-  `tools:node="remove"`). The fingerprint-only `local` field is no longer set
-  on a contributed key candidate.
+  `tools:node="remove"`). 2026-10-16: Google Play's review of 0.1.1 flagged
+  `READ_MEDIA_IMAGES`, which `expo-screen-capture` declares for its
+  screenshot *listener* on Android 13; the app only uses its FLAG_SECURE side,
+  so that permission and `READ_MEDIA_VIDEO` are now blocked the same way (the
+  merged release manifest was checked with
+  `./gradlew :app:processReleaseMainManifest`). The fingerprint-only `local`
+  field is no longer set on a contributed key candidate.
 ### New findings — open
 
 Nothing from this round remains open. The "one `RelayPool` per group rather

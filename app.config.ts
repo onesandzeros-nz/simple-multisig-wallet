@@ -11,7 +11,7 @@ import pkg from './package.json';
  * build number is rewritten by scripts/prebuild-version.js (a Unix timestamp,
  * so it only ever grows) and is used for both platforms.
  */
-const build = { versionCode: 1791883829 };
+const build = { versionCode: 1792142780 };
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
@@ -52,9 +52,20 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // Wallet metadata never leaves the phone via cloud backup; keys live in
     // the keystore and are excluded anyway.
     allowBackup: false,
-    // The prebuild template declares these. Nothing here records audio or
-    // draws over other apps, and a wallet asking for either would look wrong.
-    blockedPermissions: ['android.permission.RECORD_AUDIO', 'android.permission.SYSTEM_ALERT_WINDOW'],
+    // Permissions that the prebuild template or a library manifest would merge
+    // into the final AndroidManifest.xml, removed with tools:node="remove".
+    // Nothing here records audio or draws over other apps, and a wallet asking
+    // for either would look wrong. expo-screen-capture declares READ_MEDIA_IMAGES
+    // for its screenshot *listener* on Android 13; this app only uses it to block
+    // screenshots (FLAG_SECURE), which needs no permission, and Google Play
+    // rejects the broad photo/video permissions when the system pickers would
+    // do (file imports here already go through the system document picker).
+    blockedPermissions: [
+      'android.permission.RECORD_AUDIO',
+      'android.permission.SYSTEM_ALERT_WINDOW',
+      'android.permission.READ_MEDIA_IMAGES',
+      'android.permission.READ_MEDIA_VIDEO',
+    ],
   },
   web: {
     favicon: './assets/favicon.png',
