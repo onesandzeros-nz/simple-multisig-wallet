@@ -147,6 +147,52 @@ wallet, and the key this phone pairs with a BitBox02 under.
 
 ---
 
+## Installing it
+
+The recommended way, in two steps.
+
+**1. Get your clanker to check the code.** Point whatever AI you use at this repository and ask
+it to look for security holes and for malicious intent: key material leaving the device, entropy
+weaker than it claims to be, network calls that are not in [Security and privacy](#security-and-privacy),
+anything in the dependency tree that does not belong. [SECURITY-AUDIT.md](SECURITY-AUDIT.md)
+records the review rounds so far and is a fair place to start it. Then read what it finds. That is
+still not an audit, but a wallet you have had read is better than one you have not.
+
+**2. Compile it yourself and drop it onto your favourite mobile device.** With the phone plugged in
+and developer mode on:
+
+```bash
+npm install
+npx expo run:android --variant release --device     # pick the phone from the list
+npx expo run:ios --configuration Release --device   # macOS and an Apple ID; a free one re-signs weekly
+```
+
+That builds the native app from the source you just had read and installs it. Nothing arrives from
+a store or a build server, and no signing key but your own is involved. [Running it](#running-it)
+covers the emulator and the details.
+
+**Other ways in**, each trading some of that assurance for convenience:
+
+- **Obtainium** (Android). Add `https://github.com/onesandzeros-nz/simple-multisig-wallet` as an
+  app source and [Obtainium](https://github.com/ImranR98/Obtainium) installs the APK attached to
+  each [GitHub release](https://github.com/onesandzeros-nz/simple-multisig-wallet/releases) and
+  tells you when a new one lands. Each release note carries the APK's SHA-256; check it. You are
+  trusting the GitHub release and the signing key of Ones and Zeros Technology Limited.
+- **Zapstore** (Android). The app is published to [Zapstore](https://zapstore.dev), the app store
+  built on Nostr — `zapstore.yaml` in the repository root is its config. Zapstore checks the APK's
+  hash against what the developer's Nostr key signed, and shows who in your web of trust vouches
+  for it. Same trust as Obtainium, with the developer's identity verified by Nostr rather than by
+  GitHub.
+- **Dangerously, from your app store.** It is on
+  [Google Play](https://play.google.com/store/apps/details?id=nz.onesandzeros.simplemultisig) now,
+  and on the App Store once it is through Apple's review, as *SMS: Simple MultiSig Wallet*. What
+  you get was built on EAS's machines and signed with keys the stores hold, not the developer, and
+  nothing on your phone lets you compare it with the source you read. It is also the only way onto
+  an iPhone without a Mac, so on iOS this is the realistic option for most people. Treat it
+  accordingly.
+
+---
+
 ## Running it
 
 ```bash
@@ -552,3 +598,9 @@ Every artefact this app produces is standard:
 A wallet created here can be rebuilt in Sparrow from its descriptor, and vice versa. The Details
 screen shows the descriptors and the first addresses so you can verify a match before funding
 anything.
+
+---
+
+## Roadmap
+
+- Make it simpler & easier
