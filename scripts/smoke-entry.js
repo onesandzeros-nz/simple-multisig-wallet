@@ -5,6 +5,7 @@ import { generateMnemonic, masterFingerprint, accountXpub, bip48Path, deriveAddr
 import { buildPsbt, signPsbtWithMnemonic, summarisePsbt, finalizeAndExtract, parsePsbt } from '../src/lib/wallet';
 import { normaliseXpub } from '../src/lib/slip132';
 import { parseWalletImportText } from '../src/lib/walletImport';
+import { bip139ExportJson } from '../src/lib/bip139';
 import { createQrAssembler } from '../src/lib/qrParts';
 import { createPsbtUrEncoder } from '../src/lib/qrExport';
 import { extractPsbt } from '../src/lib/psbtFromBytes';
@@ -44,6 +45,19 @@ finalizeAndExtract(copy);
 // Wallet import + QR assembly paths (exercises bc-ur/cbor under RN globals).
 const imported = parseWalletImportText(walletDescriptor(wallet));
 if (imported.m !== 2) throw new Error('descriptor import mismatch');
+
+// BIP-139 export and import under RN globals (JSON, output scripts, PSBT ids).
+const bip139 = bip139ExportJson({
+  wallet,
+  keys: [],
+  pendingTxs: [{ id: 'p', walletId: 't', base64: built.psbt.toBase64(), memo: 'smoke', createdAt: 0, updatedAt: 0 }],
+  sync: { snapshot, history: [], addressTxCounts: {} },
+  now: 1700000000000,
+  exporter: 'smoke',
+});
+const fromBip139 = parseWalletImportText(bip139);
+if (fromBip139.m !== 2 || fromBip139.cosigners.length !== 2) throw new Error('bip139 round trip failed');
+if (!JSON.parse(bip139).accounts[0].coins[0].script) throw new Error('bip139 coin script missing');
 const asm = createQrAssembler();
 asm.receive('p1of2 foo');
 const qr = asm.receive('p2of2 bar');

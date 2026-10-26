@@ -249,7 +249,10 @@ describe('wallet import — config files', () => {
     const viaDescriptor = parseWalletImportText(walletDescriptor(original));
     const viaConfig = parseWalletImportText(walletConfigFile(original));
     const viaJson = parseWalletImportText(JSON.stringify({ descriptor: walletDescriptor(original) }));
-    for (const parsed of [viaDescriptor, viaConfig, viaJson]) {
+    const viaBip139 = parseWalletImportText(
+      JSON.stringify({ version: 'BIP139-1', network: 'bitcoin', accounts: [{ type: 'bip380', descriptor: walletDescriptor(original) }] })
+    );
+    for (const parsed of [viaDescriptor, viaConfig, viaJson, viaBip139]) {
       assert.deepEqual(firstAddresses(walletFromParsed(parsed)), firstAddresses(original));
     }
     assert.throws(() => parseWalletImportText('   '), /nothing to import/i);

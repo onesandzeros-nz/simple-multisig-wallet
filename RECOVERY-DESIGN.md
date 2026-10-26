@@ -78,6 +78,10 @@ For a group wallet both backup formats gain a group section.
 **PDF** — a "Rejoin the group" section after the cosigners: the invite as a QR code, and a line
 naming the identity key. The wallet QR stays a plain descriptor so Sparrow can still scan it.
 
+**BIP-139 export** — the same two values under `proprietary.simplemultisig.group`, as `invite` and
+`identity_fingerprint`. BIP-139 reserves `proprietary` for application metadata, so other readers
+ignore it; `groupFromBackupText` reads it back from the JSON the way it reads the comment lines.
+
 **Epoch secrets are never written to a backup.** After rotation `S0` opens only the handshake —
 joins, display names, per-group npubs and rekey notices — which is exactly what REKEY-DESIGN.md
 demoted it to. Adding `S1…` would make every backup a key to all later chat and PSBTs, undoing

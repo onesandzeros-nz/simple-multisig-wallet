@@ -1,3 +1,4 @@
+import { bip139Group } from './bip139';
 import { encodeInvite, Invite, parseInvite } from './nostr/protocol';
 import { Group, MultisigWallet, SignerKey } from './types';
 
@@ -65,15 +66,25 @@ export interface BackupGroup {
 }
 
 /**
- * The group a backup carries: the comment lines of a backup file, or a bare
- * invite — the "Rejoin the group" QR on the printed backup. Null when there
- * is none, or it is damaged.
+ * The group a backup carries: the comment lines of a backup file, the
+ * proprietary section of a BIP-139 export, or a bare invite — the "Rejoin
+ * the group" QR on the printed backup. Null when there is none, or it is
+ * damaged.
  */
 export function groupFromBackupText(input: string): BackupGroup | null {
   const t = input.trim();
   if (/^multisig:join\?/i.test(t)) {
     try {
       return { invite: parseInvite(t), text: t };
+    } catch {
+      return null;
+    }
+  }
+  if (t.startsWith('{')) {
+    try {
+      const carried = bip139Group(JSON.parse(t));
+      if (!carried) return null;
+      return { invite: parseInvite(carried.invite), text: carried.invite, identityFingerprint: carried.identityFingerprint };
     } catch {
       return null;
     }

@@ -1,8 +1,16 @@
 import { Buffer } from 'buffer';
+import { isBip139Object, readBip139 } from './bip139';
 import { bip32, bip48Path, btcNetwork } from './bitcoin';
 import { descriptorChecksum } from './descriptor';
 import { parseKeyExpression } from './slip132';
-import { Cosigner, NetworkName } from './types';
+import { Cosigner, MultisigWallet, NetworkName, PendingTx } from './types';
+import { MAX_PENDING_DRAFTS, parseIncomingPsbt, summarisePsbt, unsignedTxId } from './wallet';
+
+/** A draft a wallet file carries along: the PSBT and whatever it was called. */
+export interface ImportedDraft {
+  base64: string;
+  memo?: string;
+}
 
 export interface ParsedWallet {
   name?: string;
@@ -10,6 +18,48 @@ export interface ParsedWallet {
   n: number;
   network: NetworkName;
   cosigners: Cosigner[];
+  /**
+   * What the file said that could not be carried over — an account left
+   * behind, a network this app approximates — for the import screen to show.
+   */
+  warnings?: string[];
+  /** Drafts the file carries for this wallet (BIP-139 only), as written: see `draftsToRestore`. */
+  drafts?: ImportedDraft[];
+}
+
+/**
+ * The drafts worth keeping from an imported file, as pending transactions of
+ * the new wallet record: each must parse under the inbound size checks, spend
+ * only coins the wallet can account for — a draft is this wallet's by
+ * definition, and a file is not the place to smuggle one in — and appear
+ * once. The list is capped like drafts from a relay or a QR. Returns the
+ * records and how many drafts were left behind.
+ */
+export function draftsToRestore(
+  parsed: Pick<ParsedWallet, 'drafts'>,
+  wallet: MultisigWallet,
+  now: number,
+  newId: () => string
+): { drafts: PendingTx[]; skipped: number } {
+  const drafts: PendingTx[] = [];
+  const seen = new Set<string>();
+  let skipped = 0;
+  for (const d of parsed.drafts ?? []) {
+    try {
+      const psbt = parseIncomingPsbt(d.base64, wallet.network);
+      const txid = unsignedTxId(psbt);
+      if (seen.has(txid)) continue;
+      seen.add(txid);
+      if (!summarisePsbt(psbt, wallet).allInputsOurs || drafts.length >= MAX_PENDING_DRAFTS) {
+        skipped++;
+        continue;
+      }
+      drafts.push({ id: newId(), walletId: wallet.id, base64: psbt.toBase64(), memo: d.memo, createdAt: now, updatedAt: now });
+    } catch {
+      skipped++;
+    }
+  }
+  return { drafts, skipped };
 }
 
 function toCosigner(expr: string, index: number, name?: string): { cosigner: Cosigner; network: NetworkName } {
@@ -79,7 +129,67 @@ export function parseWalletDescriptor(input: string): ParsedWallet {
 }
 
 /**
+ * A BIP-139 export: the first account whose descriptor is a wallet this app
+ * supports, named and labelled from the file. Other accounts are reported,
+ * not imported — this app holds one account per wallet record.
+ */
+function parseBip139Export(obj: Record<string, unknown>): ParsedWallet {
+  const read = readBip139(obj);
+  const warnings = [...read.warnings];
+  let parsed: ParsedWallet | undefined;
+  let used = -1;
+  let firstError: Error | undefined;
+  for (const [i, account] of read.accounts.entries()) {
+    for (const descriptor of account.descriptors) {
+      try {
+        const candidate = parseWalletDescriptor(descriptor);
+        if (candidate.network !== read.network) {
+          throw new Error(
+            `The keys are ${candidate.network} keys, but the file says the wallet is on ${read.networkName}.`
+          );
+        }
+        parsed = candidate;
+        used = i;
+        break;
+      } catch (e) {
+        firstError ??= e instanceof Error ? e : new Error(String(e));
+      }
+    }
+    if (parsed) break;
+  }
+  if (!parsed || used < 0) {
+    const count = read.accounts.length === 1 ? 'The account' : `None of the ${read.accounts.length} accounts`;
+    throw new Error(
+      `${count} in this BIP-139 export is a wsh(sortedmulti(...)) wallet this app supports.${
+        firstError ? ` ${firstError.message}` : ''
+      }`
+    );
+  }
+  const account = read.accounts[used];
+  if (read.accounts.length > 1) {
+    warnings.push(
+      `This export holds ${read.accounts.length} accounts. Only account ${used + 1}${
+        account.name ? ` ("${account.name}")` : ''
+      } was imported; the others need importing separately.`
+    );
+  }
+  const cosigners = parsed.cosigners.map((c) => {
+    const label = account.xpubLabels[c.xpub] ?? account.aliases[c.fingerprint.toLowerCase()];
+    return label ? { ...c, name: label } : c;
+  });
+  const drafts = account.drafts.map((d) => ({ base64: d.base64, ...(d.memo ? { memo: d.memo } : {}) }));
+  return {
+    ...parsed,
+    cosigners,
+    name: account.name ?? read.name ?? parsed.name,
+    warnings: warnings.length ? warnings : undefined,
+    drafts: drafts.length ? drafts : undefined,
+  };
+}
+
+/**
  * Parses JSON wallet exports:
+ *  - BIP-139 wallet metadata exports (this app's, or any other wallet's)
  *  - Specter / Sparrow "Specter" format: { "label": "...", "descriptor": "wsh(...)#..." }
  *  - Electrum multisig wallets: { "wallet_type": "2of3", "x1/": { xpub, derivation, root_fingerprint }, ... }
  */
@@ -91,6 +201,8 @@ export function parseWalletJson(input: string): ParsedWallet {
     throw new Error('This is not valid JSON.');
   }
   if (typeof obj !== 'object' || obj === null) throw new Error('This is not a wallet file.');
+
+  if (isBip139Object(obj)) return parseBip139Export(obj);
 
   if (typeof obj.descriptor === 'string') {
     const parsed = parseWalletDescriptor(obj.descriptor);
@@ -115,7 +227,7 @@ export function parseWalletJson(input: string): ParsedWallet {
     return assembleWallet(m, entries);
   }
 
-  throw new Error('Unrecognised wallet JSON — expected a descriptor or an Electrum multisig file.');
+  throw new Error('Unrecognised wallet JSON — expected a BIP-139 export, a descriptor or an Electrum multisig file.');
 }
 
 /**

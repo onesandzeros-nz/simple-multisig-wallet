@@ -122,8 +122,8 @@ export default function VerifyBackupScreen({ navigation, route }: Props) {
         <Text style={{ fontSize: 17, fontWeight: '600', color: colors.ink }}>Check a backup</Text>
         <Text style={{ color: colors.inkSoft, marginTop: 6, fontSize: 14, lineHeight: 20 }}>
           Scan the large "Scan to restore" QR on the printed backup (not the smaller key QRs), open the
-          saved backup .txt, or paste its text. The app only checks that it describes this wallet —
-          nothing is imported and no second copy of the wallet is created.
+          saved backup file (.txt, or the BIP-139 .json), or paste its text. The app only checks that
+          it describes this wallet — nothing is imported and no second copy of the wallet is created.
         </Text>
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
           <View style={{ flex: 1 }}>

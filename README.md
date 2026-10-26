@@ -58,7 +58,7 @@ or — optionally — over Nostr relays.
 - Native segwit **P2WSH**, **BIP48** derivation, **BIP67** sorted keys, so addresses match Sparrow,
   Coldcard, Specter and Nunchuk exactly.
 - Import an existing wallet from an output descriptor, a Coldcard/Sparrow config file, or a JSON
-  export — by paste, file, or QR.
+  export (BIP-139, Specter, Electrum) — by paste, file, or QR.
 
 **Spending**
 - Balance, coins and history from your own server, cached and refreshed incrementally.
@@ -81,6 +81,14 @@ or — optionally — over Nostr relays.
   app nags until you have exported either a Sparrow-compatible config file or a printable PDF of
   QR codes, and records when you last did. Sending the wallet to a Coldcard over NFC does not
   count — that copy lives on a signer, not away from it.
+- **BIP-139 export** (Manage → Save BIP-139 export): the wallet's metadata as one JSON file in the
+  [BIP-139](https://github.com/bitcoin/bips/blob/master/bip-0139.md) format — descriptor, which
+  key is held where and on what device, cosigner names, the coins and history this phone has seen,
+  drafts in flight and, for a group wallet, the invite — for moving to another wallet application
+  that reads it. Counts as a backup, and imports back into this app with everything named and the
+  drafts restored (coins and history are re-read from the chain on the first sync). The
+  config file is unchanged and stays what Sparrow, Nunchuk, Coldcard and Specter read; none of them
+  read BIP-139 yet.
 - A group wallet's backup carries the group too — the invite, and which key your group identity
   comes from — so a lost phone can rejoin: restore the key from its phrase, the wallet from its
   backup, and the coordinator seals the current group key back to a pubkey already on the roster.
@@ -307,6 +315,7 @@ src/
     cryptoOutput.ts   BC-UR crypto-output (descriptor QR codes) back into a text descriptor
     walletImport.ts   descriptor, config-file and JSON wallet parsing
     walletExport.ts   Sparrow-compatible backup file and printable QR backup
+    bip139.ts         BIP-139 wallet metadata export, and reading one from any wallet
     walletMatch.ts    when two wallet records describe the same on-chain wallet
     backupVerify.ts   compares a scanned/opened backup with a wallet without importing it
     groupBackup.ts    the group section of a wallet backup: enough to rejoin after a lost phone
@@ -545,7 +554,10 @@ none of that is the same as an audit.
 Every artefact this app produces is standard:
 
 - `wsh(sortedmulti(...))` output descriptors with Bitcoin Core checksums
-- Coldcard/Sparrow/Specter wallet config files
+- Coldcard/Sparrow/Specter wallet config files — `tests/interop.test.ts` runs every backup file
+  through line-for-line ports of Sparrow's and Nunchuk's parsers
+- BIP-139 wallet metadata exports (JSON), written and read; the group invite travels in the
+  `proprietary.simplemultisig` section
 - BIP174 PSBTs, shared as base64 or `ur:crypto-psbt` animated QR
 - Descriptor key expressions in Sparrow's format: `[fingerprint/48h/0h/0h/2h]xpub…`
 

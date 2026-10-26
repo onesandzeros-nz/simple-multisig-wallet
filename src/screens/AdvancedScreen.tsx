@@ -5,7 +5,7 @@ import { Screen, Card, Button, SectionTitle, Label, Mono, Tag } from '../compone
 import { colors } from '../theme';
 import { useStore } from '../lib/store';
 import { showError } from '../lib/errors';
-import { exportWalletToCard } from '../lib/exportActions';
+import { exportBackup, exportWalletToCard } from '../lib/exportActions';
 import { nfcAvailable } from '../lib/nfc';
 import { recordExport } from '../lib/tutorial';
 import { walletDescriptor, walletConfigFile, deriveAddress } from '../lib/bitcoin';
@@ -14,9 +14,10 @@ import { RootStackParamList } from '../navigation';
 type Props = NativeStackScreenProps<RootStackParamList, 'Advanced'>;
 
 export default function AdvancedScreen({ route }: Props) {
-  const { wallets, keys, updateWallet } = useStore();
+  const { wallets, keys, groups, pendingTxs, updateWallet } = useStore();
   const [hasNfc, setHasNfc] = React.useState(false);
   const [sending, setSending] = React.useState(false);
+  const [exportingJson, setExportingJson] = React.useState(false);
 
   React.useEffect(() => {
     nfcAvailable().then(setHasNfc);
@@ -98,6 +99,29 @@ export default function AdvancedScreen({ route }: Props) {
           icon="share-outline"
           variant="secondary"
           onPress={() => Share.share({ message: configFile })}
+        />
+        <Text style={{ color: colors.inkSoft, marginTop: 14, marginBottom: 10, fontSize: 13, lineHeight: 19 }}>
+          A BIP-139 export carries the same public keys as JSON, together with the signer names,
+          coins and pending transactions this phone knows about — for moving the wallet to another
+          app that reads the format. It cannot spend either.
+        </Text>
+        <Button
+          title="Export BIP-139 JSON"
+          icon="code-download-outline"
+          variant="secondary"
+          loading={exportingJson}
+          onPress={async () => {
+            setExportingJson(true);
+            try {
+              const withGroup = await exportBackup('bip139', wallet, groups, keys, pendingTxs);
+              // A complete record of the wallet, so it counts as a backup.
+              await updateWallet(wallet.id, (w) => recordExport(w, 'bip139', Date.now(), withGroup));
+            } catch (e: any) {
+              showError('wallet:export-bip139', e);
+            } finally {
+              setExportingJson(false);
+            }
+          }}
         />
         {hasNfc && (
           <Button

@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { keyExpression, walletConfigFile, walletDescriptor } from '../src/lib/bitcoin';
 import { walletBackupFile } from '../src/lib/walletExport';
+import { bip139ExportJson } from '../src/lib/bip139';
 import { parseWalletImportText } from '../src/lib/walletImport';
 import { MultisigWallet } from '../src/lib/types';
 import {
@@ -68,6 +69,14 @@ describe('backup verification — matches', () => {
     const v = expectMatch(verifyBackupText(json, w));
     assert.equal(v.nameDiffers, false);
     assert.deepEqual(v.originWarnings, []);
+  });
+
+  it('accepts the BIP-139 export', () => {
+    const json = bip139ExportJson({ wallet: w, keys: [], now: 0, exporter: 'test' });
+    const v = expectMatch(verifyBackupText(json, w));
+    assert.equal(v.nameDiffers, false);
+    assert.deepEqual(v.originWarnings, []);
+    assert.equal(v.group, null);
   });
 
   it('ignores cosigner order (sortedmulti)', () => {

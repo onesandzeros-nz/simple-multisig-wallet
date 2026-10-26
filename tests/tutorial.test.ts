@@ -523,6 +523,7 @@ describe('setup extras', () => {
     const plain = walletWith({ backupVerifiedAt: 7 });
     assert.deepEqual(recordExport(plain, 'file', 100), { exportedAt: 100 });
     assert.deepEqual(recordExport(plain, 'pdf', 100), { exportedAt: 100 });
+    assert.deepEqual(recordExport(plain, 'bip139', 100), { exportedAt: 100 });
     assert.deepEqual(recordExport(plain, 'nfc', 100), {});
     const alreadyLoaded = walletWith({ setup: markDone(freshSetup(), 'hardware', 1) });
     assert.deepEqual(recordExport(alreadyLoaded, 'nfc', 100), {}, 'nothing to write once the signer is loaded');
@@ -540,6 +541,7 @@ describe('setup extras', () => {
   it('records whether a backup carried the group, only when that says something', () => {
     const plain = walletWith({});
     assert.deepEqual(recordExport(plain, 'file', 100, true), { exportedAt: 100, backupIncludesGroup: true });
+    assert.deepEqual(recordExport(plain, 'bip139', 100, true), { exportedAt: 100, backupIncludesGroup: true });
     // A later backup without the group must not leave the old flag standing.
     const carried = walletWith({ backupIncludesGroup: true });
     assert.deepEqual(recordExport(carried, 'pdf', 100), { exportedAt: 100, backupIncludesGroup: false });

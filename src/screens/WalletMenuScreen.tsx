@@ -10,7 +10,7 @@ import { useStore } from '../lib/store';
 import { exportBackup, exportWalletToCard } from '../lib/exportActions';
 import { backupMissesGroup } from '../lib/groupBackup';
 import { nfcAvailable } from '../lib/nfc';
-import { describeBackupState, describeSetupRow, recordExport, startSetup } from '../lib/tutorial';
+import { BackupKind, describeBackupState, describeSetupRow, recordExport, startSetup } from '../lib/tutorial';
 import { formatSats } from '../lib/bitcoin';
 import { loadCached } from '../lib/walletCache';
 import { WalletSnapshot } from '../lib/types';
@@ -30,7 +30,7 @@ export default function WalletMenuScreen({ navigation, route }: Props) {
   const wallet = wallets.find((w) => w.id === route.params.walletId);
   const [snapshot, setSnapshot] = React.useState<WalletSnapshot | null>(null);
   const [showCoins, setShowCoins] = React.useState(false);
-  const [exporting, setExporting] = React.useState<'file' | 'pdf' | 'nfc' | null>(null);
+  const [exporting, setExporting] = React.useState<BackupKind | 'nfc' | null>(null);
   const [hasNfc, setHasNfc] = React.useState(false);
   const [nameDraft, setNameDraft] = React.useState(wallet?.name ?? '');
   const [renaming, setRenaming] = React.useState(false);
@@ -67,17 +67,18 @@ export default function WalletMenuScreen({ navigation, route }: Props) {
 
   const missesGroup = backupMissesGroup(wallet, group);
 
-  const runExport = async (which: 'file' | 'pdf' | 'nfc') => {
+  const runExport = async (which: BackupKind | 'nfc') => {
     setExporting(which);
     try {
       // Only count it once the share sheet has been through successfully. A
-      // file or PDF is a backup; an NFC send only loads the wallet onto the
-      // signer, so it ticks the checklist's hardware step and nothing else.
+      // file, PDF or BIP-139 export is a backup; an NFC send only loads the
+      // wallet onto the signer, so it ticks the checklist's hardware step and
+      // nothing else.
       if (which === 'nfc') {
         await exportWalletToCard(wallet);
         await updateWallet(wallet.id, (w) => recordExport(w, 'nfc', Date.now()));
       } else {
-        const withGroup = await exportBackup(which, wallet, groups, keys);
+        const withGroup = await exportBackup(which, wallet, groups, keys, pendingTxs);
         await updateWallet(wallet.id, recordExport(wallet, which, Date.now(), withGroup));
       }
     } catch (e: any) {
@@ -301,6 +302,13 @@ export default function WalletMenuScreen({ navigation, route }: Props) {
           title="Print QR backup"
           subtitle="A PDF of QR codes this app can scan back in"
           onPress={() => runExport('pdf')}
+        />
+        <Divider />
+        <Row
+          icon="code-download-outline"
+          title={exporting === 'bip139' ? 'Preparing the export…' : 'Save BIP-139 export'}
+          subtitle="JSON for other wallet apps: descriptor, signers, names, coins and pending transactions"
+          onPress={() => runExport('bip139')}
         />
         <Divider />
         <Row

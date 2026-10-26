@@ -333,13 +333,20 @@ export function setPhraseCheck(setup: WalletSetup, keyId: string, on: boolean, n
 }
 
 /**
+ * The backup formats, each a complete record of the wallet: the Coldcard-style
+ * text file Sparrow and Nunchuk read, the printed QR PDF, and the BIP-139
+ * metadata export.
+ */
+export type BackupKind = 'file' | 'pdf' | 'bip139';
+
+/**
  * The wallet patch an export deserves. A file or PDF is a backup; sending
  * the wallet to a Coldcard over NFC only loads it onto a signer, so it
  * ticks the "hardware" extra and never stamps exportedAt.
  */
 export function recordExport(
   wallet: MultisigWallet,
-  which: 'file' | 'pdf' | 'nfc',
+  which: BackupKind | 'nfc',
   now: number,
   includesGroup = false
 ): Partial<MultisigWallet> {

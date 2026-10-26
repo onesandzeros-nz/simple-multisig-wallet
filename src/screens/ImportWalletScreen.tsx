@@ -8,14 +8,14 @@ import { colors } from '../theme';
 import { showError } from '../lib/errors';
 import { useStore, newId, loadMnemonic } from '../lib/store';
 import { accountXpub } from '../lib/bitcoin';
-import { parseWalletImportText } from '../lib/walletImport';
+import { draftsToRestore, parseWalletImportText } from '../lib/walletImport';
 import { groupFromBackupText, restoreMismatch } from '../lib/groupBackup';
 import { RootStackParamList } from '../navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ImportWallet'>;
 
 export default function ImportWalletScreen({ navigation, route }: Props) {
-  const { keys, wallets, addWallet } = useStore();
+  const { keys, wallets, addWallet, savePendingTx } = useStore();
   const [text, setText] = React.useState('');
   const [name, setName] = React.useState('');
   const [saving, setSaving] = React.useState(false);
@@ -93,6 +93,12 @@ export default function ImportWalletScreen({ navigation, route }: Props) {
         createdAt: Date.now(),
       };
       await addWallet(wallet);
+      // A BIP-139 export carries the wallet's drafts; bring back the ones that
+      // are really this wallet's. Nothing here can spend: a draft still needs
+      // its signatures.
+      for (const draft of draftsToRestore(parsed, wallet, Date.now(), newId).drafts) {
+        await savePendingTx(draft);
+      }
       const group = preview?.group;
       if (!group) {
         navigation.replace('Wallet', { walletId: wallet.id });
@@ -127,9 +133,9 @@ export default function ImportWalletScreen({ navigation, route }: Props) {
       <Card>
         <Text style={{ fontSize: 17, fontWeight: '600', color: colors.ink }}>Import a wallet</Text>
         <Text style={{ color: colors.inkSoft, marginTop: 6, fontSize: 14, lineHeight: 20 }}>
-          Import an output descriptor, a wallet config file, or a JSON export (Specter, Electrum)
-          from this app, Sparrow, Coldcard, Specter or Nunchuk — by pasting, scanning QR codes, or
-          opening a file. All of these contain only public keys.
+          Import an output descriptor, a wallet config file, or a JSON export (BIP-139, Specter,
+          Electrum) from this app, Sparrow, Coldcard, Specter or Nunchuk — by pasting, scanning QR
+          codes, or opening a file. All of these contain only public keys.
         </Text>
       </Card>
 
@@ -175,6 +181,18 @@ export default function ImportWalletScreen({ navigation, route }: Props) {
               {preview.parsed.network === 'testnet' && <Tag text="Testnet" tone="accent" />}
               {preview.group && <Tag text={`Group · ${preview.group.invite.name}`} tone="success" />}
             </View>
+            {preview.parsed.warnings?.map((w, i) => (
+              <Text key={i} style={{ color: colors.warning, fontSize: 13, lineHeight: 19, marginTop: 6 }}>
+                {w}
+              </Text>
+            ))}
+            {preview.parsed.drafts && (
+              <Text style={{ color: colors.inkSoft, fontSize: 13, lineHeight: 19, marginTop: 6 }}>
+                Also carries {preview.parsed.drafts.length} unfinished transaction
+                {preview.parsed.drafts.length === 1 ? '' : 's'}; the ones that spend this wallet's coins come back as
+                drafts.
+              </Text>
+            )}
             {preview.parsed.cosigners.map((c) => {
               const known = keys.find(
                 (k) => k.xpub === c.xpub || (k.fingerprint === c.fingerprint && k.type === 'local')

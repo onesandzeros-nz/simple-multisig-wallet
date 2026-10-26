@@ -134,11 +134,20 @@ export function walletDescriptor(wallet: MultisigWallet, branch?: 0 | 1): string
   return withChecksum(`wsh(sortedmulti(${wallet.m},${parts.join(',')}))`);
 }
 
+/**
+ * The wallet name as the config file carries it: printable ASCII, at most 20
+ * characters (Coldcard's limit, which Sparrow and Nunchuk apply too), and no
+ * colon — Sparrow splits each line on colons and drops a line that has two.
+ */
+export function configFileName(name: string): string {
+  return name.replace(/[^ -~]/g, '').replace(/:/g, '').slice(0, 20);
+}
+
 /** Coldcard/Sparrow/Specter compatible wallet config text file. */
 export function walletConfigFile(wallet: MultisigWallet): string {
   const lines = [
     `# Simple Multisig wallet config`,
-    `Name: ${wallet.name.replace(/[^ -~]/g, '').slice(0, 20)}`,
+    `Name: ${configFileName(wallet.name)}`,
     `Policy: ${wallet.m} of ${wallet.n}`,
     `Format: P2WSH`,
     '',

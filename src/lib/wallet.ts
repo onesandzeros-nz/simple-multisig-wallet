@@ -22,7 +22,7 @@ import {
 import { AddressInfo, HistoryItem, MultisigWallet, NetworkName, Utxo, WalletSnapshot } from './types';
 import { MAX_PSBT_CHARS } from './nostr/protocol';
 
-const GAP_LIMIT = 20;
+export const GAP_LIMIT = 20;
 const SCAN_BATCH = 5;
 const MAX_ADDRESSES = 200;
 

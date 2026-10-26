@@ -2,10 +2,14 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import QRCode from 'qrcode';
+import { APP_VERSION } from '../version';
+import { bip139ExportJson } from './bip139';
 import { keyExpression, walletConfigFile, walletDescriptor } from './bitcoin';
 import { writeTextToTag } from './nfc';
 import { loadGroupSecret } from './store';
-import { Group, MultisigWallet, SignerKey } from './types';
+import { BackupKind } from './tutorial';
+import { Group, MultisigWallet, PendingTx, SignerKey } from './types';
+import { loadCached } from './walletCache';
 import { backupPdfHtml, exportBaseName, walletBackupFile } from './walletExport';
 import { GroupBackup, groupBackupFor } from './groupBackup';
 
@@ -48,20 +52,49 @@ export async function loadGroupBackup(
 }
 
 /**
- * Exports a backup — the file or the PDF — carrying the wallet's group when it
- * has one. Returns whether it did, for `recordExport` once the share sheet has
- * been through.
+ * Exports a backup — the text file, the PDF or the BIP-139 export — carrying
+ * the wallet's group when it has one. Returns whether it did, for
+ * `recordExport` once the share sheet has been through. `pendingTxs` only
+ * matter to the BIP-139 export, which carries the wallet's drafts.
  */
 export async function exportBackup(
-  which: 'file' | 'pdf',
+  which: BackupKind,
   wallet: MultisigWallet,
   groups: Group[],
-  keys: SignerKey[]
+  keys: SignerKey[],
+  pendingTxs: PendingTx[] = []
 ): Promise<boolean> {
   const group = await loadGroupBackup(wallet, groups, keys);
   if (which === 'file') await exportWalletFile(wallet, group);
-  else await exportWalletPdf(wallet, group);
+  else if (which === 'pdf') await exportWalletPdf(wallet, group);
+  else await exportWalletBip139(wallet, group, keys, pendingTxs);
   return !!group;
+}
+
+/**
+ * Writes the BIP-139 wallet metadata export and opens the share sheet. The
+ * coins and history come from the cache the wallet screen keeps — nothing is
+ * fetched, so this works offline and says what the phone last saw.
+ */
+export async function exportWalletBip139(
+  wallet: MultisigWallet,
+  group: GroupBackup | null,
+  keys: SignerKey[],
+  pendingTxs: PendingTx[]
+): Promise<void> {
+  const sync = await loadCached(wallet.id);
+  const json = bip139ExportJson({
+    wallet,
+    keys,
+    group,
+    pendingTxs,
+    sync: sync ?? null,
+    now: Date.now(),
+    exporter: `Simple Multisig ${APP_VERSION}`,
+  });
+  const uri = `${FileSystem.cacheDirectory}${exportBaseName(wallet)}-bip139.json`;
+  await FileSystem.writeAsStringAsync(uri, json);
+  await shareFile(uri, 'application/json', `${wallet.name} BIP-139 export`, 'public.json');
 }
 
 /** Writes the Sparrow/Coldcard-compatible text file and opens the share sheet. */
