@@ -1,0 +1,102 @@
+# Desktop packages: one runner per OS, because electron-builder can only
+# make a Windows installer from Linux with Wine and a macOS bundle on macOS.
+# Run it by hand from the Actions tab, or push a version tag.
+#
+# Secrets (all optional; without them the macOS build is unsigned and the
+# others are unsigned either way):
+#   CSC_LINK, CSC_KEY_PASSWORD           Developer ID certificate (.p12 as
+#                                        base64 or a URL) and its password
+#   APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
+#                                        notarization; electron-builder also
+#                                        accepts APPLE_API_KEY, APPLE_API_KEY_ID
+#                                        and APPLE_API_ISSUER instead
+name: Desktop
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+          - os: windows-latest
+            target: win
+          - os: macos-latest
+            target: mac
+    env:
+      CI: 1
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Export the web bundle
+        run: npm run desktop:export
+
+      - name: Package (Linux)
+        if: matrix.target == 'linux'
+        run: npx electron-builder --linux --publish never
+
+      - name: Package (Windows)
+        if: matrix.target == 'win'
+        run: npx electron-builder --win --publish never
+
+      - name: Package (macOS)
+        if: matrix.target == 'mac'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # A secret that is not set arrives as an empty string, which
+          # electron-builder would take for a certificate; drop those.
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!v}" ]; then unset "$v"; fi
+          done
+          npx electron-builder --mac --publish never
+
+      - name: Smoke test the packaged app (Linux)
+        if: matrix.target == 'linux'
+        env:
+          # The runner's kernel restricts unprivileged user namespaces and
+          # the unpacked build has no setuid sandbox helper.
+          SMS_SMOKE_NO_SANDBOX: 1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" npm run desktop:smoke
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            dist-desktop/*.AppImage
+            dist-desktop/*.deb
+            dist-desktop/*.exe
+            dist-desktop/*.dmg
+            dist-desktop/*.zip
+            dist-desktop/smoke/*.png

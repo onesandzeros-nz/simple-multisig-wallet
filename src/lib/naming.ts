@@ -59,3 +59,17 @@ export function defaultPhoneKeyName(userName: string | undefined, existingNames:
 /** One sentence for every place the name is asked for or changed. */
 export const NAME_PURPOSE =
   'The people you share a wallet with see this name next to your key in the wallet, and on your messages in a group. Nobody else does. Keys you make on this phone are named after it.';
+
+/**
+ * A name or label taken from a file or a message, made safe to show and to
+ * write into a backup: control characters and bidi overrides go, whitespace
+ * collapses to single spaces, and it is cut to `max` characters. A line break
+ * in a wallet name would otherwise end a comment line of the backup file.
+ */
+export function cleanLabel(text: string, max: number): string {
+  const cleaned = text
+    .replace(/[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return Array.from(cleaned).slice(0, max).join('');
+}

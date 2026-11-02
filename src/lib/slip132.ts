@@ -85,6 +85,9 @@ export function parseKeyExpression(input: string): ParsedKeyExpression {
  */
 export function normaliseXpub(input: string): NormalisedXpub {
   const trimmed = input.trim();
+  // An extended key is 111 or 112 characters. Base58 decoding is quadratic,
+  // so a long string is refused before it can stall the import screen.
+  if (trimmed.length > 120) throw new Error('Not a valid extended public key (wrong length).');
   let data: Buffer;
   try {
     data = Buffer.from(bs58check.decode(trimmed));

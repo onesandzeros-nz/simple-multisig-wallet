@@ -1,0 +1,24 @@
+# Hardware wallets for Simple Multisig (SMS), installed by its .deb package.
+#
+# Linux gives USB and HID devices to root unless a rule says otherwise.
+# TAG+="uaccess" hands each of these devices to whoever is logged in at the
+# computer (systemd-logind), and to nobody else. These match the rules the
+# vendors publish for their own apps (Ledger Live, Trezor Suite, BitBox).
+# The file is numbered below 73 so the tag is set before logind applies it.
+
+# Ledger (every model): the raw USB device and its HID interfaces.
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="2c97", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="2c97", TAG+="uaccess"
+
+# Trezor Model T, Safe and Model One on firmware 1.7 or later (WebUSB), and the bootloader.
+SUBSYSTEM=="usb", ATTR{idVendor}=="1209", ATTR{idProduct}=="53c1", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1209", ATTR{idProduct}=="53c0", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="53c1", TAG+="uaccess"
+
+# Trezor Model One on firmware before 1.7 (HID).
+SUBSYSTEM=="usb", ATTR{idVendor}=="534c", ATTR{idProduct}=="0001", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="534c", ATTRS{idProduct}=="0001", TAG+="uaccess"
+
+# BitBox02 (the vendor id is Microchip's, so the product id is checked too).
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2403", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2403", TAG+="uaccess"

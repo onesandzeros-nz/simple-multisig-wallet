@@ -1,33 +1,41 @@
+import { Buffer } from 'buffer';
 import { walletConfigFile, walletDescriptor, deriveAddress } from './bitcoin';
 import { GroupBackup, groupBackupLines } from './groupBackup';
 import { MultisigWallet } from './types';
 
 /**
- * Backup formats for a wallet. Both contain public keys only — enough to
+ * Backup formats for a wallet. All contain public keys only — enough to
  * watch the wallet and rebuild it for signing, never enough to spend. A group
- * wallet's backup also carries the group invite (see groupBackup.ts).
+ * wallet's backup also carries the group invite (see groupBackup.ts). The
+ * BIP-139 export lives in bip139.ts.
  */
 
 /** Filesystem-safe stem for the exported file names. */
 export function exportBaseName(wallet: MultisigWallet): string {
-  const safe = wallet.name.replace(/[^A-Za-z0-9 _-]/g, '').trim().replace(/\s+/g, '-');
+  const safe = wallet.name.replace(/[^A-Za-z0-9 _-]/g, '').trim().replace(/\s+/g, '-').slice(0, 60);
   return `${safe || 'multisig'}-${wallet.m}of${wallet.n}`;
 }
 
 /**
- * Text file Sparrow (and Coldcard, Specter, Nunchuk) import directly.
- * The descriptor is included as a comment so nothing is lost if the
- * reader prefers descriptors.
+ * Coldcard lists a file for multisig import only up to this many bytes
+ * (shared/multisig.py, `file_picker(... max_size=20*200)`).
+ */
+export const COLDCARD_MAX_FILE_BYTES = 4000;
+
+/**
+ * Text file Sparrow, Nunchuk and Coldcard import directly (Specter takes the
+ * descriptor instead). The descriptor is included as a comment for a reader
+ * that prefers it — unless that would push the file past what Coldcard lists,
+ * in which case the file is the config alone. The name goes in a comment, so
+ * only a line break in it could do harm; none survives.
  */
 export function walletBackupFile(wallet: MultisigWallet, group?: GroupBackup | null): string {
-  return [
-    `# ${wallet.name} — ${wallet.m} of ${wallet.n} multisig backup`,
-    `# Public keys only. This cannot spend funds on its own.`,
-    `# Descriptor: ${walletDescriptor(wallet)}`,
-    ...(group ? groupBackupLines(group) : []),
-    '',
-    walletConfigFile(wallet),
-  ].join('\n');
+  const name = wallet.name.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+  const header = [`# ${name} — ${wallet.m} of ${wallet.n} multisig backup`, `# Public keys only. This cannot spend funds on its own.`];
+  const rest = [...(group ? groupBackupLines(group) : []), '', walletConfigFile(wallet)];
+  const withDescriptor = [...header, `# Descriptor: ${walletDescriptor(wallet)}`, ...rest].join('\n');
+  if (Buffer.byteLength(withDescriptor, 'utf8') <= COLDCARD_MAX_FILE_BYTES) return withDescriptor;
+  return [...header, ...rest].join('\n');
 }
 
 function escapeHtml(text: string): string {

@@ -2,6 +2,7 @@ import { Buffer } from 'buffer';
 import { isBip139Object, readBip139 } from './bip139';
 import { bip32, bip48Path, btcNetwork } from './bitcoin';
 import { descriptorChecksum } from './descriptor';
+import { cleanLabel, NAME_INPUT_CHARS } from './naming';
 import { parseKeyExpression } from './slip132';
 import { Cosigner, MultisigWallet, NetworkName, PendingTx } from './types';
 import { MAX_PENDING_DRAFTS, parseIncomingPsbt, summarisePsbt, unsignedTxId } from './wallet';
@@ -80,12 +81,22 @@ function toCosigner(expr: string, index: number, name?: string): { cosigner: Cos
   };
 }
 
+/**
+ * The most cosigners a wallet can have here. The script writes the key count
+ * as one opcode, OP_1 to OP_16; beyond that the library emits a different
+ * opcode in its place and every address becomes unspendable.
+ */
+export const MAX_COSIGNERS = 16;
+
 function assembleWallet(
   m: number,
   entries: { cosigner: Cosigner; network: NetworkName }[],
   name?: string
 ): ParsedWallet {
   if (entries.length < 2) throw new Error('A multisig wallet needs at least 2 cosigners.');
+  if (entries.length > MAX_COSIGNERS) {
+    throw new Error(`This app supports up to ${MAX_COSIGNERS} cosigners (${entries.length} found).`);
+  }
   if (m < 1 || m > entries.length) {
     throw new Error(`Threshold ${m} of ${entries.length} is not possible.`);
   }
@@ -128,10 +139,14 @@ export function parseWalletDescriptor(input: string): ParsedWallet {
   return assembleWallet(m, entries);
 }
 
+/** Accounts still deriving addresses first; a retired one only when nothing else fits. */
+const STATUS_RANK: Record<string, number> = { superseded: 1, archived: 2 };
+
 /**
  * A BIP-139 export: the first account whose descriptor is a wallet this app
- * supports, named and labelled from the file. Other accounts are reported,
- * not imported — this app holds one account per wallet record.
+ * supports — an active one ahead of a superseded or archived one — named
+ * and labelled from the file. Other accounts are reported, not imported:
+ * this app holds one account per wallet record.
  */
 function parseBip139Export(obj: Record<string, unknown>): ParsedWallet {
   const read = readBip139(obj);
@@ -139,7 +154,10 @@ function parseBip139Export(obj: Record<string, unknown>): ParsedWallet {
   let parsed: ParsedWallet | undefined;
   let used = -1;
   let firstError: Error | undefined;
-  for (const [i, account] of read.accounts.entries()) {
+  const ranked = read.accounts
+    .map((account, i) => ({ account, i }))
+    .sort((a, b) => (STATUS_RANK[a.account.status ?? ''] ?? 0) - (STATUS_RANK[b.account.status ?? ''] ?? 0));
+  for (const { account, i } of ranked) {
     for (const descriptor of account.descriptors) {
       try {
         const candidate = parseWalletDescriptor(descriptor);
@@ -158,12 +176,11 @@ function parseBip139Export(obj: Record<string, unknown>): ParsedWallet {
     if (parsed) break;
   }
   if (!parsed || used < 0) {
-    const count = read.accounts.length === 1 ? 'The account' : `None of the ${read.accounts.length} accounts`;
-    throw new Error(
-      `${count} in this BIP-139 export is a wsh(sortedmulti(...)) wallet this app supports.${
-        firstError ? ` ${firstError.message}` : ''
-      }`
-    );
+    const what =
+      read.accounts.length === 1
+        ? 'The account in this BIP-139 export is not'
+        : `None of the ${read.accounts.length} accounts in this BIP-139 export is`;
+    throw new Error(`${what} a wsh(sortedmulti(...)) wallet this app supports.${firstError ? ` ${firstError.message}` : ''}`);
   }
   const account = read.accounts[used];
   if (read.accounts.length > 1) {
@@ -206,7 +223,8 @@ export function parseWalletJson(input: string): ParsedWallet {
 
   if (typeof obj.descriptor === 'string') {
     const parsed = parseWalletDescriptor(obj.descriptor);
-    return { ...parsed, name: typeof obj.label === 'string' ? obj.label : parsed.name };
+    const label = typeof obj.label === 'string' ? cleanLabel(obj.label, NAME_INPUT_CHARS) : '';
+    return { ...parsed, name: label || parsed.name };
   }
 
   const walletType = typeof obj.wallet_type === 'string' && obj.wallet_type.match(/^(\d+)of(\d+)$/);
@@ -248,7 +266,7 @@ export function parseWalletImportText(input: string): ParsedWallet {
 }
 
 /**
- * Parses the Coldcard/Sparrow/Specter wallet config text format:
+ * Parses the Coldcard/Sparrow/Nunchuk wallet config text format:
  *   Name: …
  *   Policy: 2 of 3
  *   Format: P2WSH

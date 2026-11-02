@@ -3,7 +3,7 @@ import { Alert, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Buffer } from 'buffer';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
+import { readPickedDocument } from '../platform/files';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen, Card, Button, Input, Label, Mono, Tag, SectionTitle, Divider } from '../components/ui';
 import { NfcScanModal } from '../components/NfcScanModal';
@@ -16,7 +16,7 @@ import { bip32, bip48Path, btcNetwork } from '../lib/bitcoin';
 import { isFingerprint } from '../lib/slip132';
 import { cancelNfcSession, importFromTapsigner, nfcAvailable, readNdefTexts } from '../lib/nfc';
 import { kindName, readKeyFromDevice } from '../lib/hw';
-import { usbAvailable } from '../lib/hw/usb';
+import { USB_HOST, usbAvailable } from '../lib/hw/usb';
 import { healthCheckHint, recordHealthCheck } from '../lib/keyHealth';
 import { RootStackParamList } from '../navigation';
 
@@ -116,7 +116,7 @@ export default function ImportKeyScreen({ navigation, route }: Props) {
         multiple: false,
       });
       if (result.canceled || !result.assets?.[0]) return;
-      const content = await FileSystem.readAsStringAsync(result.assets[0].uri);
+      const content = await readPickedDocument(result.assets[0]);
       applyKeyText(content.trim(), 'import-file');
     } catch (e: any) {
       showError('key:import-file', e);
@@ -433,7 +433,9 @@ export default function ImportKeyScreen({ navigation, route }: Props) {
           </HelpSection>
           <Divider />
           <HelpSection title="Ledger, Trezor or BitBox02">
-            {hasUsb
+            {hasUsb && USB_HOST === 'this computer'
+              ? 'Plug the device into this computer, unlock it, and choose Connect by USB above. On a Ledger, open the Bitcoin app first. Close Ledger Live, Trezor Suite or the BitBox app if they are running: only one program can talk to the device at a time.'
+              : hasUsb
               ? 'Plug the device into this phone with a USB cable (a USB-C to USB-C cable, or the device’s own cable with an adapter), unlock it, and choose Connect by USB above. On a Ledger, open the Bitcoin app first. Android asks once whether this app may use the device.\n\nWithout a cable: connect the device to Sparrow Wallet on a computer, add it as a keystore in Settings, and copy the key expression (it looks like [fingerprint/48h/0h/0h/2h]xpub6…). Send it to this phone and use Paste key text, or show it as a QR in Sparrow and Scan QR.'
               : 'None of these exports a multisig xpub on its own, and this phone cannot talk to them over USB. Connect the device to Sparrow Wallet on a computer, open Settings and add it as a keystore, then copy the key expression (it looks like [fingerprint/48h/0h/0h/2h]xpub6…). Send it to this phone and use Paste key text, or show it as a QR in Sparrow and Scan QR.'}
           </HelpSection>

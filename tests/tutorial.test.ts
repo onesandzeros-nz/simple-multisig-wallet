@@ -662,7 +662,7 @@ describe('setup progress', () => {
     const d = (at: number) => new Date(at).toLocaleDateString();
     const t1 = Date.UTC(2026, 0, 5, 12);
     const t2 = Date.UTC(2026, 1, 9, 12);
-    assert.equal(describeBackupState({}), 'Text file Sparrow, Coldcard and Specter accept');
+    assert.equal(describeBackupState({}), 'Text file Sparrow, Nunchuk and Coldcard accept');
     assert.equal(describeBackupState({ exportedAt: t1 }), `Last backed up ${d(t1)}`);
     assert.equal(describeBackupState({ exportedAt: t1, backupVerifiedAt: t2 }), `Last backed up ${d(t1)} · checked ${d(t2)}`);
     assert.equal(

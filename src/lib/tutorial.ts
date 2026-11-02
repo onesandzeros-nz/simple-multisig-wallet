@@ -498,7 +498,7 @@ export function describeBackupState(
   }
   if (exportedAt) return `Last backed up ${d(exportedAt)}`;
   if (backupVerifiedAt) return `Checked ${d(backupVerifiedAt)} · never backed up from this phone`;
-  return 'Text file Sparrow, Coldcard and Specter accept';
+  return 'Text file Sparrow, Nunchuk and Coldcard accept';
 }
 
 /** The checklist's reminder that the user went against the recommendation; null when they didn't. */

@@ -4,6 +4,7 @@
     "main": "index.ts",
     "dependencies": {
         "@bitcoinerlab/secp256k1": "^1.2.0",
+        "@expo/metro-runtime": "~57.0.17",
         "@expo/vector-icons": "^15.0.2",
         "@ngraveio/bc-ur": "^1.1.13",
         "@noble/ciphers": "^2.2.0",
@@ -37,6 +38,7 @@
         "expo-splash-screen": "~57.0.9",
         "expo-status-bar": "~57.0.1",
         "react": "19.2.3",
+        "react-dom": "19.2.3",
         "react-native": "0.86.0",
         "react-native-get-random-values": "~1.11.0",
         "react-native-keyboard-controller": "^1.21.9",
@@ -47,6 +49,7 @@
         "react-native-screens": "^4.26.2",
         "react-native-svg": "15.15.4",
         "react-native-tcp-socket": "^6.4.2",
+        "react-native-web": "^0.21.2",
         "react-native-worklets": "^0.10.1",
         "stream-browserify": "^3.0.0"
     },
@@ -54,7 +57,10 @@
         "@types/bs58check": "^2.1.2",
         "@types/qrcode": "^1.5.6",
         "@types/react": "~19.2.2",
+        "electron": "45.0.0",
+        "electron-builder": "26.18.0",
         "esbuild": "^0.28.1",
+        "playwright": "1.64.1",
         "tsx": "^4.23.1",
         "typescript": "~6.0.3"
     },
@@ -72,7 +78,18 @@
         "build:ios": "eas build --platform ios --profile production",
         "build:apk": "eas build --platform android --profile preview",
         "submit:android": "eas submit --platform android --profile production",
-        "submit:ios": "eas submit --platform ios --profile production"
+        "submit:ios": "eas submit --platform ios --profile production",
+        "desktop:export": "expo export --platform web --output-dir dist --clear",
+        "desktop": "npm run desktop:export && node desktop/launch.js",
+        "desktop:dev": "ELECTRON_DEV_URL=http://localhost:8081 node desktop/launch.js",
+        "desktop:build": "npm run desktop:export && electron-builder --publish never",
+        "desktop:build:linux": "npm run desktop:export && electron-builder --linux --publish never",
+        "desktop:build:win": "npm run desktop:export && electron-builder --win --publish never",
+        "desktop:build:mac": "npm run desktop:export && electron-builder --mac --publish never",
+        "desktop:smoke": "node desktop/smoke.mjs"
     },
-    "private": true
+    "private": true,
+    "allowScripts": {
+        "electron@45.0.0": true
+    }
 }

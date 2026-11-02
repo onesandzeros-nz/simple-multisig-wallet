@@ -21,8 +21,14 @@ import {
 import { DEFAULT_RELAYS, MAX_RELAYS } from '../lib/nostr/protocol';
 import { useRelayStatus } from '../lib/nostr/useRelayStatus';
 import { NAME_INPUT_CHARS, NAME_PURPOSE } from '../lib/naming';
+import { describeKeystore, desktopKeystoreInfo, KeystoreInfo } from '../platform/keystoreInfo';
 
 export default function SettingsScreen() {
+  // On the desktop, which keystore the shell found — null on a phone.
+  const [keystore, setKeystore] = React.useState<KeystoreInfo | null>(null);
+  React.useEffect(() => {
+    desktopKeystoreInfo().then(setKeystore).catch(() => {});
+  }, []);
   const { settings, updateSettings } = useStore();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // The form edits the user's own server; the public pick lives separately.
@@ -132,9 +138,14 @@ export default function SettingsScreen() {
           subtitle="Standard multisig · works with Sparrow, Coldcard and Specter"
         />
         <Text style={{ color: colors.inkSoft, fontSize: 13, lineHeight: 19, marginTop: 4 }}>
-          Keys never leave this phone's secure storage. The server below only ever sees public
-          addresses and signed transactions.
+          {keystore ? describeKeystore(keystore).text : "Keys never leave this phone's secure storage."} The
+          server below only ever sees public addresses and signed transactions.
         </Text>
+        {keystore && describeKeystore(keystore).warning ? (
+          <Text style={{ color: colors.warning, fontSize: 13, lineHeight: 19, marginTop: 8 }}>
+            Treat this computer as you would a phone without a lock screen.
+          </Text>
+        ) : null}
       </Card>
 
       <SectionTitle>Your name</SectionTitle>

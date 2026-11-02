@@ -32,7 +32,7 @@ import { psbtReceipts } from '../lib/nostr/receipts';
 import { DEFAULT_MAX_ATTEMPTS } from '../lib/nostr/outbox';
 import { cancelNfcSession, nfcAvailable, readPsbtFromTag, signWithTapsigner, writePsbtToTag } from '../lib/nfc';
 import { isHardwareKind, kindName, signPsbtWithDevice } from '../lib/hw';
-import { usbAvailable } from '../lib/hw/usb';
+import { USB_HOST, usbAvailable } from '../lib/hw/usb';
 import { exportPsbtFile } from '../lib/exportActions';
 import { exportBaseName } from '../lib/walletExport';
 import { Cosigner, SignerKey } from '../lib/types';
@@ -578,7 +578,7 @@ export default function PsbtScreen({ navigation, route }: Props) {
     if (isHardwareKind(source)) {
       if (hasUsb) {
         return {
-          hint: `Plug the ${kindName(source)} into this phone`,
+          hint: `Plug the ${kindName(source)} into ${USB_HOST}`,
           action: { title: 'Plug in', icon: 'hardware-chip-outline', variant: 'secondary', onPress: () => setUsbSigner(c) },
         };
       }

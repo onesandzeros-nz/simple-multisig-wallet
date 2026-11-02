@@ -48,6 +48,14 @@ export interface WalletSync {
   history: HistoryItem[];
   /** Per address: the tx count seen at the last sync, used to detect change. */
   addressTxCounts: Record<string, number>;
+  /**
+   * Per address: whether the last fetch returned as many transactions as the
+   * server counts for it. Esplora serves one page of 25 confirmed
+   * transactions, so a busy address's older history is simply absent, which
+   * the BIP-139 export must know before it claims a birth height. Absent on
+   * caches from before this was recorded.
+   */
+  addressHistoryComplete?: Record<string, boolean>;
 }
 
 interface ScannedAddress {
@@ -182,7 +190,17 @@ export async function syncWallet(
   const addressTxCounts: Record<string, number> = {};
   for (const u of allUsed) addressTxCounts[u.info.address] = u.txCount;
 
-  return { snapshot, history, addressTxCounts };
+  // Addresses not fetched this time keep what the previous sync found out.
+  const addressHistoryComplete: Record<string, boolean> = {};
+  for (const u of allUsed) {
+    const before = previous?.addressHistoryComplete?.[u.info.address];
+    if (before !== undefined && !staleAddresses.has(u.info.address)) addressHistoryComplete[u.info.address] = before;
+  }
+  for (const [i, entry] of fetched.entries()) {
+    addressHistoryComplete[entry.info.address] = entry.txs.length >= refreshed[i].txCount;
+  }
+
+  return { snapshot, history, addressTxCounts, addressHistoryComplete };
 }
 
 /**

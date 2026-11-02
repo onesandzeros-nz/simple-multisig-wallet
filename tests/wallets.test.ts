@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { deriveAddress, walletConfigFile, walletDescriptor } from '../src/lib/bitcoin';
+import { deriveAddress, generateMnemonic, walletConfigFile, walletDescriptor } from '../src/lib/bitcoin';
 import { descriptorChecksum } from '../src/lib/descriptor';
 import {
   parseWalletConfigFile,
@@ -156,6 +156,13 @@ describe('wallet import — descriptors', () => {
   it('rejects unsupported script types', () => {
     assert.throws(() => parseWalletDescriptor('wpkh(xpub123)'), /sortedmulti/);
     assert.throws(() => parseWalletDescriptor('sh(wsh(multi(2,a,b)))'), /sortedmulti/);
+  });
+
+  it('refuses more cosigners than the script can count', () => {
+    const sixteen = makeWallet(2, Array.from({ length: 16 }, () => generateMnemonic()));
+    assert.equal(parseWalletDescriptor(walletDescriptor(sixteen)).n, 16);
+    const seventeen = makeWallet(2, Array.from({ length: 17 }, () => generateMnemonic()));
+    assert.throws(() => parseWalletDescriptor(walletDescriptor(seventeen)), /up to 16 cosigners \(17 found\)/);
   });
 
   it('rejects impossible thresholds and duplicate keys', () => {

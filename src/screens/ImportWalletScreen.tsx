@@ -2,7 +2,7 @@ import React from 'react';
 import { Alert, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
+import { readPickedDocument } from '../platform/files';
 import { Screen, Card, Button, Input, Label, Tag, SectionTitle } from '../components/ui';
 import { colors } from '../theme';
 import { showError } from '../lib/errors';
@@ -17,12 +17,20 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ImportWallet'>;
 export default function ImportWalletScreen({ navigation, route }: Props) {
   const { keys, wallets, addWallet, savePendingTx } = useStore();
   const [text, setText] = React.useState('');
+  // A file from the picker is parsed from here and never mirrored into the
+  // text field: a BIP-139 export with a long history runs to hundreds of
+  // kilobytes, which a native text field handles badly.
+  const [loaded, setLoaded] = React.useState<{ name: string; content: string } | null>(null);
   const [name, setName] = React.useState('');
   const [saving, setSaving] = React.useState(false);
+  const source = loaded?.content ?? text;
 
   // The QR scanner hands its assembled result back via route params.
   React.useEffect(() => {
-    if (route.params?.scanned) setText(route.params.scanned);
+    if (route.params?.scanned) {
+      setLoaded(null);
+      setText(route.params.scanned);
+    }
   }, [route.params?.scanned]);
 
   const pickFile = async () => {
@@ -33,8 +41,8 @@ export default function ImportWalletScreen({ navigation, route }: Props) {
         multiple: false,
       });
       if (result.canceled || !result.assets?.[0]) return;
-      const content = await FileSystem.readAsStringAsync(result.assets[0].uri);
-      setText(content);
+      const content = await readPickedDocument(result.assets[0]);
+      setLoaded({ name: result.assets[0].name, content });
     } catch (e: any) {
       showError('wallet:import-file', e);
     }
@@ -42,23 +50,23 @@ export default function ImportWalletScreen({ navigation, route }: Props) {
 
   // Live preview of whatever is pasted, scanned or loaded.
   const preview = React.useMemo(() => {
-    if (!text.trim()) return null;
+    if (!source.trim()) return null;
     try {
-      const parsed = parseWalletImportText(text);
+      const parsed = parseWalletImportText(source);
       // A group wallet's backup file carries its group (RECOVERY-DESIGN.md) —
       // only offered when it describes this very wallet's policy.
-      const carried = groupFromBackupText(text);
+      const carried = groupFromBackupText(source);
       const group = carried && !restoreMismatch(carried.invite, parsed) ? carried : null;
       return { parsed, group, error: null as string | null };
     } catch (e: any) {
       return { parsed: null, group: null, error: e.message ?? String(e) };
     }
-  }, [text]);
+  }, [source]);
 
   const importWallet = async () => {
     setSaving(true);
     try {
-      const parsed = parseWalletImportText(text);
+      const parsed = parseWalletImportText(source);
 
       // Link cosigners to keys already on this phone (so signing works and
       // familiar names show up). Imported keys match by xpub directly;
@@ -141,15 +149,24 @@ export default function ImportWalletScreen({ navigation, route }: Props) {
 
       <Card>
         <Label>Descriptor, config file or JSON</Label>
-        <Input
-          placeholder={'wsh(sortedmulti(2,[…]xpub…,…))  or  "Policy: 2 of 3" config text'}
-          value={text}
-          onChangeText={setText}
-          multiline
-          style={{ minHeight: 120 }}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+        {loaded ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Text style={{ flex: 1, color: colors.ink, fontSize: 14 }} numberOfLines={2}>
+              Opened {loaded.name} ({Math.max(1, Math.round(loaded.content.length / 1024))} KB)
+            </Text>
+            <Button title="Clear" variant="ghost" compact onPress={() => setLoaded(null)} />
+          </View>
+        ) : (
+          <Input
+            placeholder={'wsh(sortedmulti(2,[…]xpub…,…))  or  "Policy: 2 of 3" config text'}
+            value={text}
+            onChangeText={setText}
+            multiline
+            style={{ minHeight: 120 }}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        )}
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}>
             <Button

@@ -90,8 +90,9 @@ export default function AdvancedScreen({ route }: Props) {
       <SectionTitle>Interoperability</SectionTitle>
       <Card>
         <Text style={{ color: colors.inkSoft, marginBottom: 10, fontSize: 13, lineHeight: 19 }}>
-          This configuration file imports directly into Sparrow, Coldcard, Specter and Nunchuk.
-          Every group member should keep a copy — it contains only public keys, no secrets.
+          This configuration file imports directly into Sparrow, Nunchuk and Coldcard; Specter takes
+          the descriptor above. Every group member should keep a copy — it contains only public keys,
+          no secrets.
         </Text>
         <Mono text={configFile} small />
         <Button
@@ -103,7 +104,8 @@ export default function AdvancedScreen({ route }: Props) {
         <Text style={{ color: colors.inkSoft, marginTop: 14, marginBottom: 10, fontSize: 13, lineHeight: 19 }}>
           A BIP-139 export carries the same public keys as JSON, together with the signer names,
           coins and pending transactions this phone knows about — for moving the wallet to another
-          app that reads the format. It cannot spend either.
+          app that reads the format. For a group wallet it also carries the group invite, as the
+          backup file does. It cannot spend either.
         </Text>
         <Button
           title="Export BIP-139 JSON"

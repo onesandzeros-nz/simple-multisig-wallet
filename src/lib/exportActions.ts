@@ -1,7 +1,5 @@
-import * as FileSystem from 'expo-file-system/legacy';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 import QRCode from 'qrcode';
+import { saveBinaryFile, savePdfFromHtml, saveTextFile } from '../platform/files';
 import { APP_VERSION } from '../version';
 import { bip139ExportJson } from './bip139';
 import { keyExpression, walletConfigFile, walletDescriptor } from './bitcoin';
@@ -18,22 +16,13 @@ async function qrSvg(data: string): Promise<string> {
   return QRCode.toString(data, { type: 'svg', errorCorrectionLevel: 'M', margin: 1 });
 }
 
-async function shareFile(uri: string, mimeType: string, title: string, uti = mimeType): Promise<void> {
-  if (!(await Sharing.isAvailableAsync())) {
-    throw new Error('This device has no way to share files.');
-  }
-  await Sharing.shareAsync(uri, { mimeType, dialogTitle: title, UTI: uti });
-}
-
 /**
  * Writes the transaction as a binary .psbt file — the form Sparrow, Coldcard,
  * Nunchuk and Electrum open — and hands it to the share sheet. A text share
  * has no file behind it, so on Android "save to Files" or Drive refuses it.
  */
 export async function exportPsbtFile(base64: string, baseName: string): Promise<void> {
-  const uri = `${FileSystem.cacheDirectory}${baseName}.psbt`;
-  await FileSystem.writeAsStringAsync(uri, base64.trim(), { encoding: FileSystem.EncodingType.Base64 });
-  await shareFile(uri, 'application/octet-stream', `${baseName}.psbt`, 'public.data');
+  await saveBinaryFile(`${baseName}.psbt`, base64.trim(), 'application/octet-stream', `${baseName}.psbt`, 'public.data');
 }
 
 /**
@@ -92,16 +81,12 @@ export async function exportWalletBip139(
     now: Date.now(),
     exporter: `Simple Multisig ${APP_VERSION}`,
   });
-  const uri = `${FileSystem.cacheDirectory}${exportBaseName(wallet)}-bip139.json`;
-  await FileSystem.writeAsStringAsync(uri, json);
-  await shareFile(uri, 'application/json', `${wallet.name} BIP-139 export`, 'public.json');
+  await saveTextFile(`${exportBaseName(wallet)}-bip139.json`, json, 'application/json', `${wallet.name} BIP-139 export`, 'public.json');
 }
 
 /** Writes the Sparrow/Coldcard-compatible text file and opens the share sheet. */
 export async function exportWalletFile(wallet: MultisigWallet, group?: GroupBackup | null): Promise<void> {
-  const uri = `${FileSystem.cacheDirectory}${exportBaseName(wallet)}.txt`;
-  await FileSystem.writeAsStringAsync(uri, walletBackupFile(wallet, group));
-  await shareFile(uri, 'text/plain', `${wallet.name} backup`);
+  await saveTextFile(`${exportBaseName(wallet)}.txt`, walletBackupFile(wallet, group), 'text/plain', `${wallet.name} backup`);
 }
 
 /**
@@ -115,7 +100,7 @@ export async function exportWalletToCard(wallet: MultisigWallet): Promise<void> 
   );
 }
 
-/** Builds the printable QR backup as a PDF and opens the share sheet. */
+/** Builds the printable QR backup as a PDF and opens the share sheet (or, on the desktop, "Save as…"). */
 export async function exportWalletPdf(wallet: MultisigWallet, group?: GroupBackup | null): Promise<void> {
   const [descriptorQr, groupQr, ...cosignerQrs] = await Promise.all([
     qrSvg(walletDescriptor(wallet)),
@@ -128,14 +113,5 @@ export async function exportWalletPdf(wallet: MultisigWallet, group?: GroupBacku
     new Date().toLocaleString(),
     group
   );
-  const { uri } = await Print.printToFileAsync({ html });
-
-  // Give the file a meaningful name — printToFileAsync uses a random one.
-  const named = `${FileSystem.cacheDirectory}${exportBaseName(wallet)}-backup.pdf`;
-  try {
-    await FileSystem.moveAsync({ from: uri, to: named });
-    await shareFile(named, 'application/pdf', `${wallet.name} backup`);
-  } catch {
-    await shareFile(uri, 'application/pdf', `${wallet.name} backup`);
-  }
+  await savePdfFromHtml(`${exportBaseName(wallet)}-backup.pdf`, html, `${wallet.name} backup`);
 }

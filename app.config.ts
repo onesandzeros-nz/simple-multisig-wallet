@@ -67,8 +67,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       'android.permission.READ_MEDIA_VIDEO',
     ],
   },
+  // The web build is what the desktop app (desktop/, Electron) runs: one
+  // index.html plus static files, bundled by Metro like the phones.
   web: {
     favicon: './assets/favicon.png',
+    bundler: 'metro',
+    output: 'single',
   },
   // The EAS project this app builds and submits under (`eas init`).
   extra: { eas: { projectId: 'a0de8574-cf70-464d-bf62-e7cd3f90f35f' } },

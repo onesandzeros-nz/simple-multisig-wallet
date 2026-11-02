@@ -300,3 +300,114 @@ describe('electrum adapter', () => {
     client.close();
   });
 });
+
+/** A socket the test drives by hand: answers server.version, and can be dropped at will. */
+function scriptedSocket() {
+  const listeners: Record<string, Function[]> = {};
+  const emit = (event: string, arg?: any) => (listeners[event] ?? []).forEach((f) => f(arg));
+  const socket: ElectrumSocket = {
+    write: (data: string) => {
+      for (const line of data.split('\n').filter(Boolean)) {
+        const req = JSON.parse(line);
+        const result = req.method === 'server.version' ? ['electrs', '1.4'] : { height: 5 };
+        setTimeout(() => emit('data', `${JSON.stringify({ id: req.id, result })}\n`), 0);
+      }
+    },
+    destroy: () => {},
+    on: (event: string, cb: any) => {
+      (listeners[event] ??= []).push(cb);
+      if (event === 'connect') setTimeout(() => cb(), 0);
+    },
+  } as ElectrumSocket;
+  return { socket, emit };
+}
+
+describe('electrum client connection failures', () => {
+  it('rejects a call when the connection fails before the handshake, then reconnects', async () => {
+    let attempts = 0;
+    const factory = (): ElectrumSocket => {
+      attempts++;
+      if (attempts > 1) return scriptedSocket().socket;
+      // Connection refused: error, then close, never connect.
+      const listeners: Record<string, Function[]> = {};
+      const emit = (event: string, arg?: any) => (listeners[event] ?? []).forEach((f) => f(arg));
+      setTimeout(() => {
+        emit('error', new Error('connect ECONNREFUSED'));
+        emit('close');
+      }, 0);
+      return {
+        write: () => {},
+        destroy: () => {},
+        on: (event: string, cb: any) => void (listeners[event] ??= []).push(cb),
+      } as ElectrumSocket;
+    };
+    const client = new ElectrumClient({ host: 'h', port: 50001 }, factory, 500);
+    await assert.rejects(client.call('blockchain.headers.subscribe'), /ECONNREFUSED/);
+    assert.deepEqual(await client.call('blockchain.headers.subscribe'), { height: 5 });
+    assert.equal(attempts, 2);
+    client.close();
+  });
+
+  it('reconnects after the server drops the connection', async () => {
+    const sockets: ReturnType<typeof scriptedSocket>[] = [];
+    const factory = (): ElectrumSocket => {
+      const s = scriptedSocket();
+      sockets.push(s);
+      return s.socket;
+    };
+    const client = new ElectrumClient({ host: 'h', port: 50001 }, factory, 500);
+    assert.deepEqual(await client.call('blockchain.headers.subscribe'), { height: 5 });
+    sockets[0].emit('close');
+    assert.deepEqual(await client.call('blockchain.headers.subscribe'), { height: 5 });
+    assert.equal(sockets.length, 2);
+    client.close();
+  });
+});
+
+describe('electrum client connection lifecycle', () => {
+  it('ignores a late close from a socket already replaced', async () => {
+    const sockets: ReturnType<typeof scriptedSocket>[] = [];
+    const factory = (): ElectrumSocket => {
+      const s = scriptedSocket();
+      sockets.push(s);
+      return s.socket;
+    };
+    const client = new ElectrumClient({ host: 'h', port: 50001 }, factory, 500);
+    await client.call('blockchain.headers.subscribe');
+    sockets[0].emit('close'); // dropped
+    const inFlight = client.call('blockchain.headers.subscribe'); // reconnects on socket 2
+    await new Promise((r) => setTimeout(r, 0));
+    sockets[0].emit('close'); // the old socket speaks again
+    sockets[0].emit('error', new Error('stale'));
+    assert.deepEqual(await inFlight, { height: 5 });
+    assert.equal(sockets.length, 2);
+    client.close();
+  });
+
+  it('close() while connecting settles the waiting call and refuses later ones', async () => {
+    const factory = (): ElectrumSocket =>
+      ({ write: () => {}, destroy: () => {}, on: () => {} }) as unknown as ElectrumSocket; // never connects
+    const client = new ElectrumClient({ host: 'h', port: 50001 }, factory, 500);
+    const waiting = client.call('blockchain.headers.subscribe');
+    client.close();
+    await assert.rejects(waiting, /Connection closed/);
+    await assert.rejects(client.call('blockchain.headers.subscribe'), /Connection closed/);
+  });
+
+  it('drops the connection on an oversized response and reconnects for the next call', async () => {
+    const sockets: ReturnType<typeof scriptedSocket>[] = [];
+    const factory = (): ElectrumSocket => {
+      const s = scriptedSocket();
+      sockets.push(s);
+      return s.socket;
+    };
+    const client = new ElectrumClient({ host: 'h', port: 50001 }, factory, 500);
+    await client.call('blockchain.headers.subscribe');
+    const pending = client.rpc('blockchain.scripthash.get_history', ['00']);
+    sockets[0].emit('data', 'x'.repeat(5_000_001)); // no newline: a line that never ends
+    await assert.rejects(pending, /oversized/);
+    assert.deepEqual(await client.call('blockchain.headers.subscribe'), { height: 5 });
+    assert.equal(sockets.length, 2);
+    client.close();
+  });
+});

@@ -46,7 +46,7 @@ export function groupBackupFor(
 }
 
 /**
- * Comment lines for the backup file. Sparrow, Coldcard, Specter and our own
+ * Comment lines for the backup file. Sparrow, Nunchuk, Coldcard and our own
  * config parser all skip `#` lines, so the file stays a plain wallet file.
  */
 export function groupBackupLines(g: GroupBackup): string[] {

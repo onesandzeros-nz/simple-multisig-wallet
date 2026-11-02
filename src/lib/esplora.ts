@@ -1,3 +1,4 @@
+import { httpFetch } from './http';
 import { NetworkName } from './types';
 
 /**
@@ -97,7 +98,7 @@ async function fetchWithTimeout(url: string): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    return await fetch(url, { signal: controller.signal });
+    return await httpFetch(url, { signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -273,7 +274,7 @@ export async function fetchFees(network: NetworkName): Promise<RecommendedFees> 
 export async function fetchTipHeightFrom(server: string): Promise<number> {
   let res: Response;
   try {
-    res = await fetch(`${server.replace(/\/+$/, '')}/api/blocks/tip/height`);
+    res = await httpFetch(`${server.replace(/\/+$/, '')}/api/blocks/tip/height`);
   } catch (e: any) {
     const message = String(e?.message ?? e);
     // Android refuses plain HTTP unless the build allows it.
@@ -350,7 +351,7 @@ export async function broadcastTxVia(
   const base = network === 'mainnet' ? `${root}/api` : `${root}/testnet/api`;
   let res: Response;
   try {
-    res = await fetch(`${base}/tx`, { method: 'POST', body: txHex });
+    res = await httpFetch(`${base}/tx`, { method: 'POST', body: txHex });
   } catch (e: any) {
     throw new Error(`Could not reach ${root}: ${String(e?.message ?? e)}`);
   }
@@ -370,7 +371,7 @@ export async function broadcastTxVia(
 export async function broadcastTx(network: NetworkName, txHex: string): Promise<string> {
   let res: Response;
   try {
-    res = await fetch(`${baseUrl(network)}/tx`, { method: 'POST', body: txHex });
+    res = await httpFetch(`${baseUrl(network)}/tx`, { method: 'POST', body: txHex });
   } catch (e: any) {
     const message = String(e?.message ?? e);
     if (/CLEARTEXT/i.test(message)) {

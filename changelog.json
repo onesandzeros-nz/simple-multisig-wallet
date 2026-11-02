@@ -5,7 +5,8 @@
             "date": "2026-10-26",
             "features": [
                 "BIP-139 wallet metadata export (Manage \u2192 Save BIP-139 export): descriptor, signers, names, coins and pending transactions as JSON; imports back in, and Check a backup reads it",
-                "Importing a wallet reads BIP-139 exports from other wallet apps, naming cosigners from the file and restoring its unfinished transactions as drafts"
+                "Importing a wallet reads BIP-139 exports from other wallet apps, naming cosigners from the file and restoring its unfinished transactions as drafts",
+                "Backup file: a colon or line break in the wallet name no longer trips Sparrow, and the descriptor comment is left out when the file would exceed what Coldcard's file picker lists; imports refuse more than 16 cosigners, which the script cannot encode"
             ]
         },
         {

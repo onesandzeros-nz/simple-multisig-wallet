@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
+import { readPickedDocument } from '../platform/files';
 import { Buffer } from 'buffer';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -329,9 +329,7 @@ export default function WalletScreen({ navigation, route }: Props) {
       if (result.canceled || !result.assets?.[0]) return;
       // Read as base64 so a binary .psbt survives; extractPsbt then accepts the
       // raw transaction, or base64/hex text, whichever the wallet wrote.
-      const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      const base64 = await readPickedDocument(result.assets[0], 'base64');
       let psbt: string;
       try {
         psbt = extractPsbt([Buffer.from(base64, 'base64')], wallet.network);

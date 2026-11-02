@@ -44,29 +44,60 @@ export class ElectrumClient {
     private timeoutMs = DEFAULT_TIMEOUT_MS
   ) {}
 
+  /** Rejects the connection attempt in progress, if any. */
+  private abortConnect: ((err: Error) => void) | null = null;
+
   /** Connects and negotiates the protocol version. Safe to call repeatedly. */
   connect(): Promise<void> {
+    if (this.closed) return Promise.reject(new Error('Connection closed.'));
     if (this.ready) return this.ready;
+    let socket: ElectrumSocket;
+    try {
+      socket = this.factory(this.target);
+    } catch (e: any) {
+      return Promise.reject(new Error(`Could not open a connection: ${e?.message ?? e}`));
+    }
+    this.socket = socket;
+    this.buffered = '';
     this.ready = new Promise<void>((resolve, reject) => {
-      let socket: ElectrumSocket;
-      try {
-        socket = this.factory(this.target);
-      } catch (e: any) {
-        reject(new Error(`Could not open a connection: ${e?.message ?? e}`));
-        return;
-      }
-      this.socket = socket;
-
-      socket.on('data', (chunk: string) => this.onData(chunk));
-      socket.on('error', (err: Error) => this.failAll(err instanceof Error ? err : new Error(String(err))));
-      socket.on('close', () => {
-        if (!this.closed) this.failAll(new Error('The server closed the connection.'));
+      // Only the socket in use may fail the client's requests: a late event
+      // from one already replaced settles its own attempt and nothing else.
+      // A connection that never came up rejects this promise rather than
+      // leaving callers waiting, and the next call opens a fresh socket.
+      let settled = false;
+      const dropped = (err: Error) => {
+        if (this.socket === socket) {
+          this.failAll(err);
+          this.socket = null;
+          this.ready = null;
+        }
+        if (!settled) {
+          settled = true;
+          if (this.abortConnect === dropped) this.abortConnect = null;
+          try {
+            socket.destroy();
+          } catch {
+            // already gone
+          }
+          reject(err);
+        }
+      };
+      this.abortConnect = dropped;
+      socket.on('data', (chunk: string) => {
+        if (this.socket === socket) this.onData(chunk);
       });
+      socket.on('error', (err: Error) => dropped(err instanceof Error ? err : new Error(String(err))));
+      socket.on('close', () => dropped(new Error('The server closed the connection.')));
       socket.on('connect', () => {
+        if (this.socket !== socket) return;
         // Version negotiation doubles as a liveness check.
         this.rpc('server.version', [CLIENT_NAME, PROTOCOL_VERSION]).then(
-          () => resolve(),
-          (e) => reject(e)
+          () => {
+            settled = true;
+            if (this.abortConnect === dropped) this.abortConnect = null;
+            resolve();
+          },
+          (e) => dropped(e)
         );
       });
     });
@@ -77,10 +108,8 @@ export class ElectrumClient {
     const { messages, rest } = feedLines(this.buffered, chunk);
     this.buffered = rest;
     if (this.buffered.length > MAX_LINE_BYTES) {
-      const error = new Error('The server sent an oversized response.');
-      this.buffered = '';
-      this.failAll(error);
-      this.close();
+      // Drop this connection; the next call opens another.
+      this.teardown(new Error('The server sent an oversized response.'));
       return;
     }
     for (const message of messages) this.dispatch(message);
@@ -131,15 +160,24 @@ export class ElectrumClient {
     return this.rpc<T>(method, params);
   }
 
-  close(): void {
-    this.closed = true;
-    this.failAll(new Error('Connection closed.'));
+  /** Ends the current connection, failing what was in flight; the client itself stays usable. */
+  private teardown(err: Error): void {
+    const socket = this.socket;
+    this.socket = null;
+    this.ready = null;
+    this.buffered = '';
+    this.failAll(err);
+    this.abortConnect?.(err);
     try {
-      this.socket?.destroy();
+      socket?.destroy();
     } catch {
       // already gone
     }
-    this.socket = null;
-    this.ready = null;
+  }
+
+  /** Ends the connection for good: later calls are refused. */
+  close(): void {
+    this.closed = true;
+    this.teardown(new Error('Connection closed.'));
   }
 }

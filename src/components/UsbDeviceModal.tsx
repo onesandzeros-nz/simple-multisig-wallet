@@ -14,7 +14,7 @@ import {
   UserCancelled,
 } from '../lib/hw';
 import { deviceMemory } from '../lib/hw/memory';
-import { listHardwareWallets, openHardwareWallet, watchHardwareWallets } from '../lib/hw/usb';
+import { listHardwareWallets, openHardwareWallet, USB_HOST, watchHardwareWallets } from '../lib/hw/usb';
 
 export interface UsbJob {
   /** Connected and unlocked, ready for commands. */
@@ -80,7 +80,16 @@ export function UsbDeviceModal<T>({
   // Whoever is waiting on the person: the driver, mid-command.
   const waiting = React.useRef<{ resolve: (value: any) => void; reject: (e: Error) => void } | null>(null);
 
-  const refresh = React.useCallback(() => setDevices(listHardwareWallets()), []);
+  // Listings can overlap (a plug-in event and the poll); only the latest counts.
+  const listing = React.useRef(0);
+  const refresh = React.useCallback(() => {
+    const mine = ++listing.current;
+    listHardwareWallets()
+      .then((found) => {
+        if (listing.current === mine) setDevices(found);
+      })
+      .catch(() => {});
+  }, []);
 
   /** Ends the attempt in hand, whatever it was doing. */
   const abandon = React.useCallback(() => {
@@ -228,7 +237,7 @@ export function UsbDeviceModal<T>({
                       <Text
                         style={{ color: colors.inkSoft, fontSize: 13, lineHeight: 19, marginTop: 10, textAlign: 'center' }}
                       >
-                        Plug your Ledger, Trezor or BitBox02 into this phone and unlock it. It will appear here.
+                        Plug your Ledger, Trezor or BitBox02 into {USB_HOST} and unlock it. It will appear here.
                       </Text>
                     </View>
                   ) : (

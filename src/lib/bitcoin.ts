@@ -143,7 +143,7 @@ export function configFileName(name: string): string {
   return name.replace(/[^ -~]/g, '').replace(/:/g, '').slice(0, 20);
 }
 
-/** Coldcard/Sparrow/Specter compatible wallet config text file. */
+/** Coldcard/Sparrow/Nunchuk compatible wallet config text file. */
 export function walletConfigFile(wallet: MultisigWallet): string {
   const lines = [
     `# Simple Multisig wallet config`,

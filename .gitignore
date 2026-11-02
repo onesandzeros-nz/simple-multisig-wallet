@@ -53,3 +53,6 @@ secrets/
 
 # EAS local signing credentials (keystore path + passwords), see eas.json credentialsSource
 credentials.json
+
+# electron-builder output (desktop app packages, smoke-test screenshots)
+dist-desktop/

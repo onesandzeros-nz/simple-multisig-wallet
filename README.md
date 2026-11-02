@@ -265,6 +265,112 @@ TAPSIGNER path out of reach, and a hardware wallet needs the phone's own USB por
 build, sign and merge, the Esplora and Electrum backends, backups, verification and health
 checks — behaves normally.
 
+## Desktop (macOS, Windows, Linux)
+
+The same app runs on a computer. Metro bundles the code for the web, as it would for a browser,
+and Electron puts that bundle in a window. The shell in `desktop/` provides what a phone has
+natively and a web page does not — the keystore, storage, TCP for Electrum, native dialogs, saving
+files and printing the PDF backup — over a narrow bridge into a sandboxed renderer. Nothing from
+`node_modules` ships in the package: the page is one Metro bundle and the main process is plain
+Node and Electron.
+
+```bash
+npm run desktop               # export the web bundle and open it in Electron
+npm run desktop:build:linux   # AppImage and .deb into dist-desktop/
+npm run desktop:build:mac     # .dmg and .zip, Intel and Apple silicon — on a Mac only
+npm run desktop:build:win     # NSIS installer and a portable .exe
+npm run desktop:build         # whichever of those the current OS can make
+```
+
+Packages land in `dist-desktop/` as `simple-multisig-<version>-<os>-<arch>.<ext>` (the Windows
+portable build carries a `-portable` suffix so it does not overwrite the installer), next to an
+unpacked copy (`linux-unpacked/` and so on) that `npm run desktop:smoke` tests. The configuration
+is `electron-builder.yml`. electron-builder cannot cross-build — a Windows installer from Linux
+needs Wine and a macOS bundle can only be made on macOS — so `.github/workflows/desktop.yml`
+builds each OS on its own runner, on a version tag (`v0.1.2` or `0.1.2`) or by hand from the
+Actions tab: it runs the tests, exports the bundle, packages, smoke-tests the packaged app on
+Linux under Xvfb, and uploads the packages. Builds are unsigned unless `CSC_LINK` and
+`CSC_KEY_PASSWORD` are set; macOS notarization needs `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`
+and `APPLE_TEAM_ID` as well. The workflow takes all five from repository secrets of the same
+names and skips signing when they are absent.
+
+**What works.** Everything that is not a phone radio: wallets and keys, the guided setup, PSBT
+build, sign and merge over files, pasting and QR codes shown on screen, the Esplora and Electrum
+backends, Nostr groups, backups including the PDF, verification and health checks, importing
+wallet and key files, scanning QR codes with a webcam, and Ledger, Trezor and BitBox02 devices
+over USB (below). **What does not:** NFC and the TAPSIGNER, biometrics (the owner check before a recovery phrase is shown passes without
+asking, as on a phone with no lock screen), and screenshot blocking (the window is kept out of
+screen recordings on macOS and Windows; Linux has nothing comparable). Security mode relocks as on
+the phone: after a while with the window unfocused or minimised, after the machine sleeps, and on
+macOS and Windows when the screen locks (Linux reports no lock event, but a lock screen takes the
+focus, which counts).
+
+**Hardware wallets over USB.** The same drivers as on Android, reaching the device through
+Chromium's WebHID (Ledger, BitBox02, a Trezor Model One on firmware before 1.7) and WebUSB (every
+other Trezor). The shell grants the page those devices and no others, so a wallet shows up in the
+device list as soon as it is plugged in and unlocked, with no browser chooser. Only one program can
+talk to a device at a time: close Ledger Live, Trezor Suite (and Trezor Bridge, which it can leave
+running) or the BitBox app first. On a Ledger, open the Bitcoin app before connecting.
+
+**Hardware wallets on Linux.** Linux gives USB devices to root unless a udev rule says otherwise.
+The `.deb` installs one, `/etc/udev/rules.d/70-simple-multisig-hardware-wallets.rules`, which hands
+these devices to whoever is logged in at the computer (and removes it when the package is removed).
+If you already use Ledger Live, Trezor Suite or the BitBox app you probably have their equivalent
+rules. Otherwise, with the AppImage or a development run, install it by hand and replug the device:
+
+```bash
+sudo cp desktop/build/linux/70-simple-multisig-hardware-wallets.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+(The AppImage carries the same file in `resources/udev/`.) Windows and macOS need nothing: Trezors
+ship the descriptor that makes Windows load its generic USB driver by itself.
+
+**Where data lives.** In `<appData>/simple-multisig/`: `~/.config/simple-multisig` on Linux,
+`~/Library/Application Support/simple-multisig` on macOS, `%APPDATA%\simple-multisig` on Windows.
+`storage.json` is what AsyncStorage holds on a phone — wallets, the public side of keys, settings.
+`secure.json` holds the recovery phrases, group secrets and the security-mode PIN, each encrypted
+by Electron's `safeStorage`: the macOS Keychain, Windows DPAPI tied to your login, or on Linux the
+desktop's secret service (GNOME Keyring or KWallet). A Linux desktop without one falls back to
+`basic_text`, a fixed key that obfuscates rather than encrypts; Settings says which keystore is in
+use and warns when it is that fallback — treat such a computer as a phone without a lock screen.
+Uninstalling leaves the directory behind. `SIMPLE_MULTISIG_USER_DATA=<dir>` points the app at
+another directory; the smoke test uses that.
+
+**The Linux sandbox.** Chromium's renderer sandbox needs either unprivileged user namespaces or a
+setuid helper. Ubuntu 24.04 and later restrict user namespaces through AppArmor, so a bare
+Electron binary refuses to start there. The `.deb` deals with it: its install script adds an
+AppArmor profile granting `userns` to `/opt/SMS/simple-multisig`, and on a kernel without user
+namespaces makes `chrome-sandbox` setuid instead, so the installed app runs with its sandbox
+intact. An AppImage installs nothing and can do neither. On such a system it has to be started
+with `--no-sandbox`, which keeps the rest (context isolation, the privileged bridge, the content
+security policy) but drops the OS-level sandbox around the renderer — or you write an AppArmor
+profile for it yourself; the one the deb installs, with the path changed, is the template. On
+Debian and Ubuntu prefer the `.deb`. The AppImage needs `libfuse2` (`libfuse2t64` on Ubuntu
+24.04+), or run it with `--appimage-extract-and-run`.
+
+**Unsigned builds.** macOS refuses an unsigned app the first time: right-click → Open, or
+`xattr -d com.apple.quarantine /Applications/SMS.app`. Windows SmartScreen says "Windows
+protected your PC": More info → Run anyway. Check the download's hash against the release first,
+as with the APK.
+
+**Fuses.** The packaged binary has Electron's fuses set so that it cannot run as plain Node,
+ignores `NODE_OPTIONS`, loads only the app inside its asar, and on macOS and Windows checks the
+asar's hash. One is left at its default: `--inspect` still works, because the smoke test drives
+the packaged app through Playwright, which attaches to the main process that way. Someone who can
+already start the app as you can therefore attach a debugger to it — no more than they could do
+with your data directory.
+
+**Development loop.** `npx expo start --web` in one terminal and `npm run desktop:dev` in another
+opens Electron on the Metro dev server with live reload; reload and the developer tools are in the
+View menu of a development run. (On Windows set `ELECTRON_DEV_URL=http://localhost:8081` in the
+environment and run `node desktop/launch.js`.) On Ubuntu 24.04+ an unpackaged Electron needs the
+same `--no-sandbox` as the AppImage; `desktop/launch.js`, which both scripts go through, detects that
+and adds it, saying so on the console. (Note that `npm run desktop --no-sandbox` hands the flag to
+npm, not to Electron; anything for Electron goes after `--`.) The page also
+runs in a plain browser without the shell, for interface work only: secrets then sit unencrypted in
+sessionStorage, with a warning in the console.
+
 ## Releasing
 
 Store builds go through [EAS](https://docs.expo.dev/build/introduction/), which holds the signing
@@ -308,6 +414,8 @@ npm test           # full suite (node:test)
 npm run selftest   # end-to-end sanity check of the wallet engine
 npm run smoke      # runs the engine under Hermes-like globals to catch
                    # device-only failures before a build
+npm run desktop:smoke   # drives the packaged desktop app end to end; needs a build
+                        # in dist-desktop/ first (npm run desktop:build:linux etc.)
 ```
 
 The hardware wallet drivers have a second set of tests that run against the manufacturers' own
@@ -602,8 +710,9 @@ none of that is the same as an audit.
 Every artefact this app produces is standard:
 
 - `wsh(sortedmulti(...))` output descriptors with Bitcoin Core checksums
-- Coldcard/Sparrow/Specter wallet config files — `tests/interop.test.ts` runs every backup file
-  through line-for-line ports of Sparrow's and Nunchuk's parsers
+- Coldcard/Sparrow wallet config files, which Nunchuk reads too — `tests/interop.test.ts` runs
+  every backup file through line-for-line ports of Sparrow's and Nunchuk's parsers. The descriptor
+  comment is left out when it would push the file past the 4000 bytes Coldcard's file picker lists
 - BIP-139 wallet metadata exports (JSON), written and read; the group invite travels in the
   `proprietary.simplemultisig` section
 - BIP174 PSBTs, shared as base64 or `ur:crypto-psbt` animated QR

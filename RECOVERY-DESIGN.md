@@ -72,7 +72,7 @@ For a group wallet both backup formats gain a group section.
   group's relays, name, policy, network, coordinator pubkey and `k=1`.
 - The identity line is the master fingerprint of the phone key whose seed derives this device's
   group identity (`Group.identityKeyId`), so a restore can choose the same key.
-- `parseWalletConfigFile` already skips `#` lines, as do Sparrow, Coldcard and Specter, so the file
+- `parseWalletConfigFile` already skips `#` lines, as do Sparrow, Nunchuk and Coldcard, so the file
   stays a valid wallet file everywhere.
 
 **PDF** — a "Rejoin the group" section after the cosigners: the invite as a QR code, and a line

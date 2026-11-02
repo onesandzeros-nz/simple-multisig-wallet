@@ -1,12 +1,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { configFileName, walletConfigFile } from '../src/lib/bitcoin';
+import * as bs58check from 'bs58check';
+import { Buffer } from 'buffer';
+import { configFileName, generateMnemonic, walletConfigFile, walletDescriptor } from '../src/lib/bitcoin';
 import { groupBackupFor } from '../src/lib/groupBackup';
 import { generateSecretKey } from '../src/lib/nostr/crypto';
 import { normaliseXpub } from '../src/lib/slip132';
 import { Group, MultisigWallet, SignerKey } from '../src/lib/types';
-import { walletBackupFile } from '../src/lib/walletExport';
-import { makeWallet, MNEMONICS } from './helpers';
+import { parseWalletImportText } from '../src/lib/walletImport';
+import { COLDCARD_MAX_FILE_BYTES, walletBackupFile } from '../src/lib/walletExport';
+import { makeWallet, MNEMONICS, withVersionBytes } from './helpers';
 
 /**
  * Do Sparrow and Nunchuk still read our backup file? Neither can run here, so
@@ -143,6 +146,25 @@ interface NunchukWallet {
   signers: NunchukSigner[];
 }
 
+/**
+ * Utils::SanitizeBIP32Input: base58check-decode (at most 78 bytes), overwrite
+ * the version with the chain's own xpub/tpub prefix, re-encode — whatever
+ * network the key was for. A testnet key on the mainnet chain is not refused,
+ * it is re-labelled.
+ */
+function nunchukSanitizeBip32(input: string, targetFormat: 'xpub' | 'tpub'): string {
+  let data: Buffer;
+  try {
+    data = Buffer.from(bs58check.decode(input));
+  } catch {
+    throw new Error('Can not decode slip132 input');
+  }
+  if (data.length > 78) throw new Error('Can not decode slip132 input');
+  const prefix = Buffer.from(targetFormat === 'xpub' ? '0488b21e' : '043587cf', 'hex');
+  prefix.copy(data, 0);
+  return bs58check.encode(data);
+}
+
 function nunchukParseConfig(chain: 'MAIN' | 'TESTNET', content: string): NunchukWallet {
   let name = '';
   let a = 'LEGACY';
@@ -171,10 +193,10 @@ function nunchukParseConfig(chain: 'MAIN' | 'TESTNET', content: string): Nunchuk
     } else if ((sm = line.match(XFP_REGEX))) {
       if (derivation === '') throw new Error('Invalid derivation path');
       const xfp = sm[1];
-      // SanitizeBIP32Input re-encodes any SLIP-132 prefix as xpub/tpub; IsValidXPub checks it.
-      const sane = normaliseXpub(sm[2].trim());
-      if (sane.network !== (chain === 'MAIN' ? 'mainnet' : 'testnet')) throw new Error('Invalid xpub');
-      signers.push({ name: `ImportedKey-${derivation}`, xpub: sane.xpub, derivation, xfp });
+      const xpub = nunchukSanitizeBip32(sm[2].trim(), chain === 'MAIN' ? 'xpub' : 'tpub');
+      // IsValidXPub: a well-formed extended public key, now always with the chain's prefix.
+      normaliseXpub(xpub);
+      signers.push({ name: `ImportedKey-${derivation}`, xpub, derivation, xfp });
     }
   }
   if (n <= 0) n = signers.length;
@@ -302,8 +324,61 @@ describe('interoperability — the backup file in Sparrow and Nunchuk', () => {
   it('reads a testnet wallet on the testnet chain', () => {
     const t = makeWallet(2, MNEMONICS.slice(0, 3), 'testnet', 'Test');
     expectSame(t, walletBackupFile(t));
-    // A testnet file on Nunchuk's mainnet chain is refused, as it should be.
-    assert.throws(() => nunchukParseConfig('MAIN', walletBackupFile(t)), /Invalid xpub/);
+    // On Nunchuk's mainnet chain the keys are re-labelled as xpubs rather than
+    // refused — that is libnunchuk's behaviour, not a check this app can add.
+    const relabelled = nunchukParseConfig('MAIN', walletBackupFile(t));
+    assert.deepEqual(
+      relabelled.signers.map((s) => s.xpub),
+      t.cosigners.map((c) => withVersionBytes(c.xpub, '0488b21e'))
+    );
+  });
+
+  it('keeps a line break in the wallet name out of the file', () => {
+    // A name can arrive from a file or a group invite; a line break in it
+    // would end the header comment and start a line every parser reads.
+    const nasty = makeWallet(2, MNEMONICS.slice(0, 3), 'mainnet', `Savings\nPolicy: 1 of 1\r\n${MNEMONICS[0].slice(0, 8)}`);
+    const file = walletBackupFile(nasty);
+    assert.equal(file.split('\n').filter((l) => /^Policy:/.test(l)).length, 1);
+    expectSame(nasty, file);
+    assert.equal(parseWalletImportText(file).n, 3);
+  });
+
+  it('stays within what Coldcard lists, dropping the descriptor comment only when it must', () => {
+    const many = Array.from({ length: 16 }, () => generateMnemonic());
+    const keys: SignerKey[] = [{ id: 'key-0', name: 'Phone', type: 'local', fingerprint: '00000000', createdAt: 0 }];
+    for (const n of [3, 8, 12, 16]) {
+      const w = makeWallet(2, many.slice(0, n), 'mainnet', 'A fairly long wallet name here');
+      keys[0].fingerprint = w.cosigners[0].fingerprint;
+      const group: Group = {
+        id: 'g1',
+        name: w.name,
+        relays: ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.nostr.band', 'wss://relay.primal.net'],
+        identityKeyId: 'key-0',
+        coordinatorPubkey: 'ab'.repeat(32),
+        m: 2,
+        n,
+        network: 'mainnet',
+        rekey: true,
+        contributedKeyIds: ['key-0'],
+        coordinator: true,
+        walletId: w.id,
+        createdAt: 0,
+      };
+      const backup = groupBackupFor(group, generateSecretKey(), keys)!;
+      for (const file of [walletBackupFile(w), walletBackupFile(w, backup)]) {
+        assert.ok(Buffer.byteLength(file, 'utf8') <= COLDCARD_MAX_FILE_BYTES, `${n} cosigners: ${Buffer.byteLength(file, 'utf8')} bytes`);
+        expectSame(w, file);
+        // The descriptor comment is there whenever it fits, and only then.
+        const descriptorLine = `# Descriptor: ${walletDescriptor(w)}\n`;
+        if (!file.includes(descriptorLine)) {
+          assert.ok(
+            Buffer.byteLength(file, 'utf8') + Buffer.byteLength(descriptorLine, 'utf8') > COLDCARD_MAX_FILE_BYTES,
+            `${n} cosigners: the descriptor was dropped although it would have fitted`
+          );
+        }
+        if (n <= 8) assert.ok(file.includes(descriptorLine), 'small wallets keep the descriptor');
+      }
+    }
   });
 
   it('survives awkward wallet names', () => {

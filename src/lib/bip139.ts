@@ -1,9 +1,10 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { btcNetwork, walletDescriptor } from './bitcoin';
 import type { GroupBackup } from './groupBackup';
+import { cleanLabel, NAME_INPUT_CHARS } from './naming';
 import { isFingerprint } from './slip132';
 import { Cosigner, KeySource, MultisigWallet, NetworkName, PendingTx, SignerKey } from './types';
-import { GAP_LIMIT, parsePsbt, unsignedTxId, WalletSync } from './wallet';
+import { GAP_LIMIT, parsePsbt, summarisePsbt, unsignedTxId, WalletSync } from './wallet';
 
 /**
  * BIP-139 wallet metadata export: one JSON object carrying what this phone
@@ -18,9 +19,8 @@ import { GAP_LIMIT, parsePsbt, unsignedTxId, WalletSync } from './wallet';
  * BIP requires for an export that may be kept online.
  *
  * This is a third backup format next to the Coldcard-style text file and the
- * printed PDF, not a replacement: Sparrow, Nunchuk, Coldcard and Specter read
- * the text file and none of them read BIP-139 yet, so the text file stays
- * exactly as it is.
+ * printed PDF, not a replacement: Sparrow, Nunchuk and Coldcard read the text
+ * file and none of them read BIP-139 yet, so the text file stays as it is.
  */
 
 /**
@@ -35,6 +35,9 @@ export const BIP139_VERSION = 'BIP139-1';
 /** This app's namespace inside a `proprietary` object. */
 export const BIP139_PROPRIETARY_KEY = 'simplemultisig';
 
+/** The most of a memo taken from a file that is kept. */
+const MEMO_CHARS = 200;
+
 /** Genesis block times, for the birth-height estimate the registry allows. */
 const GENESIS_TIME: Record<NetworkName, number> = { mainnet: 1231006505, testnet: 1296688602 };
 
@@ -45,6 +48,9 @@ const DEVICES: Record<KeySource, { vendor: string; model?: string; transports: s
   bitbox02: { vendor: 'Shift Crypto', model: 'BitBox02', transports: ['usb'] },
   tapsigner: { vendor: 'Coinkite', model: 'TAPSIGNER', transports: ['nfc'] },
 };
+
+const ACCOUNT_STATUSES = ['active', 'superseded', 'archived'] as const;
+export type Bip139AccountStatus = (typeof ACCOUNT_STATUSES)[number];
 
 const seconds = (ms: number): number => Math.floor(ms / 1000);
 
@@ -105,12 +111,17 @@ export function estimateHeight(timeSec: number, network: NetworkName): number {
  * `createdAt` alone is not enough: a wallet imported from another app was
  * created there, possibly years before this record, and a height estimated
  * from the import date would come after coins it already had. So the
- * estimate is taken only once the wallet has been synced, when its history
- * is known, and lowered to the earliest coin or transaction seen. Undefined
- * when nothing can be said.
+ * estimate is lowered to the earliest coin or transaction seen — and only
+ * claimed at all when the sync says every used address's history is
+ * complete. Esplora hands over one page of 25 confirmed transactions per
+ * address, so a busy address can hide older activity; a cache from before
+ * completeness was recorded says nothing until a rescan. Undefined when
+ * nothing can be said.
  */
 export function birthHeight(wallet: MultisigWallet, sync: WalletSync | null | undefined): number | undefined {
   if (!sync) return undefined;
+  const complete = sync.snapshot.usedAddresses.every((a) => sync.addressHistoryComplete?.[a.address] === true);
+  if (!complete) return undefined;
   let birth = wallet.createdAt > 0 ? estimateHeight(seconds(wallet.createdAt), wallet.network) : Infinity;
   for (const h of sync.history) {
     if (h.confirmed && h.blockTime) birth = Math.min(birth, estimateHeight(h.blockTime, wallet.network));
@@ -147,6 +158,24 @@ function signerFor(key: SignerKey | undefined, fingerprint: string): Record<stri
       }),
     ],
   };
+}
+
+/**
+ * The change index a draft pays to, when the wallet re-derives that output
+ * at the path the draft claims — `isChange` is only ever true then, so the
+ * path can be read. A payment to one of the wallet's receive addresses is
+ * verified the same way but is not change.
+ */
+function draftChangeIndex(psbt: bitcoin.Psbt, wallet: MultisigWallet): number {
+  let highest = -1;
+  summarisePsbt(psbt, wallet).outputs.forEach((o, i) => {
+    if (!o.isChange) return;
+    const parts = psbt.data.outputs[i]?.bip32Derivation?.[0]?.path.split('/') ?? [];
+    const index = Number(parts[parts.length - 1]);
+    const branch = Number(parts[parts.length - 2]);
+    if (branch === 1 && Number.isInteger(index) && index >= 0) highest = Math.max(highest, index);
+  });
+  return highest;
 }
 
 export interface Bip139Source {
@@ -220,6 +249,7 @@ export function buildBip139Export(src: Bip139Source): Record<string, unknown> {
 
   // Keyed by the unsigned transaction's id, which signing does not change.
   const psbts: Record<string, string> = {};
+  let draftChange = -1;
   for (const t of src.pendingTxs ?? []) {
     if (t.walletId !== wallet.id) continue;
     try {
@@ -228,11 +258,16 @@ export function buildBip139Export(src: Bip139Source): Record<string, unknown> {
       psbts[txid] = psbt.toBase64();
       const memo = t.memo?.trim();
       if (memo) labels.push({ type: 'tx', ref: txid, label: memo });
+      draftChange = Math.max(draftChange, draftChangeIndex(psbt, wallet));
     } catch {
       // A draft that no longer parses is not worth failing the backup for.
     }
   }
   const psbtIds = Object.keys(psbts);
+
+  // The highest change index generated: the last one seen on chain, or the
+  // one a draft in flight pays to — that address exists before it is used.
+  const changeIndex = Math.max(sync ? sync.snapshot.nextChangeIndex - 1 : -1, draftChange);
 
   const account = compact({
     type: 'bip380',
@@ -240,10 +275,9 @@ export function buildBip139Export(src: Bip139Source): Record<string, unknown> {
     name: wallet.name,
     status: 'active',
     gap_limit: GAP_LIMIT,
-    // The receive address shown last is the highest handed out; a change
-    // address is only ever generated by spending.
+    // The receive address shown last is the highest handed out.
     receive_index: sync ? sync.snapshot.nextReceiveIndex : undefined,
-    change_index: sync && sync.snapshot.nextChangeIndex > 0 ? sync.snapshot.nextChangeIndex - 1 : undefined,
+    change_index: changeIndex >= 0 ? changeIndex : undefined,
     birth_block: birthHeight(wallet, sync),
     keys: keyObjects,
     labels: labels.length ? labels : undefined,
@@ -297,6 +331,8 @@ export interface Bip139Account {
   /** The account's descriptor, or each of the set for `multi_bip380`. */
   descriptors: string[];
   name?: string;
+  /** One of the registered statuses; anything else is not imported. */
+  status?: Bip139AccountStatus;
   /** Lowercase fingerprint → alias, from the account's keys. */
   aliases: Record<string, string>;
   /** xpub → BIP-329 label. */
@@ -326,39 +362,69 @@ export interface Bip139Read {
 export function isBip139Object(obj: unknown): obj is Record<string, unknown> {
   if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return false;
   const o = obj as Record<string, unknown>;
-  if (typeof o.version === 'string' && /^BIP139-\d+$/.test(o.version)) return true;
+  if (isBip139Version(o.version)) return true;
   return Array.isArray(o.accounts) && typeof o.network === 'string';
+}
+
+function isBip139Version(value: unknown): boolean {
+  return typeof value === 'string' && /^BIP139-\d+$/.test(value);
 }
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x);
 }
 
-function readAccount(raw: unknown, index: number): Bip139Account {
+/** A string from the file, cleaned; undefined when there is nothing left. */
+function text(value: unknown, max: number): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  return cleanLabel(value, max) || undefined;
+}
+
+/** Maps keyed by what a file says — never by Object.prototype's names. */
+function emptyMap(): Record<string, string> {
+  return Object.create(null);
+}
+
+/**
+ * One account. `strict` is the BIP's own rule — every mandatory field — for
+ * a file that names a BIP-139 version; a draft-era file, which predates the
+ * `type` field, gets the benefit of the doubt for a plain descriptor.
+ */
+function readAccount(raw: unknown, index: number, strict: boolean): Bip139Account {
   const where = `Account ${index + 1}`;
   if (!isRecord(raw)) throw new Error(`${where} of this BIP-139 export is not an object.`);
-  if (typeof raw.type !== 'string') throw new Error(`${where} has no "type".`);
+  let type: string;
+  if (typeof raw.type === 'string') type = raw.type;
+  else if (!strict && typeof raw.descriptor === 'string') type = 'bip380';
+  else throw new Error(`${where} has no "type".`);
   let descriptors: string[];
   if (typeof raw.descriptor === 'string') descriptors = [raw.descriptor];
   else if (Array.isArray(raw.descriptor) && raw.descriptor.every((d) => typeof d === 'string')) {
     descriptors = raw.descriptor as string[];
   } else throw new Error(`${where} has no "descriptor".`);
 
-  const aliases: Record<string, string> = {};
+  const aliases = emptyMap();
   if (raw.keys !== undefined) {
     if (!isRecord(raw.keys)) throw new Error(`${where}: "keys" is not an object.`);
     for (const [fp, k] of Object.entries(raw.keys)) {
       if (!isRecord(k) || typeof k.key !== 'string') throw new Error(`${where}: key ${fp} has no "key" field.`);
-      if (typeof k.alias === 'string' && k.alias.trim()) aliases[k.key.toLowerCase()] = k.alias.trim();
+      const alias = text(k.alias, NAME_INPUT_CHARS);
+      if (alias) aliases[k.key.toLowerCase()] = alias;
     }
   }
-  const xpubLabels: Record<string, string> = {};
-  const txLabels: Record<string, string> = {};
+  const xpubLabels = emptyMap();
+  const txLabels = emptyMap();
   if (Array.isArray(raw.labels)) {
     for (const l of raw.labels) {
-      if (!isRecord(l) || typeof l.ref !== 'string' || typeof l.label !== 'string' || !l.label.trim()) continue;
-      if (l.type === 'xpub') xpubLabels[l.ref] = l.label.trim();
-      if (l.type === 'tx') txLabels[l.ref.toLowerCase()] = l.label.trim();
+      if (!isRecord(l) || typeof l.ref !== 'string') continue;
+      if (l.type === 'xpub') {
+        const label = text(l.label, NAME_INPUT_CHARS);
+        if (label) xpubLabels[l.ref] = label;
+      }
+      if (l.type === 'tx') {
+        const label = text(l.label, MEMO_CHARS);
+        if (label) txLabels[l.ref.toLowerCase()] = label;
+      }
     }
   }
   if (Array.isArray(raw.coins)) {
@@ -373,10 +439,12 @@ function readAccount(raw: unknown, index: number): Bip139Account {
     }
     psbtRefs = (raw.psbts as string[]).map((p) => p.toLowerCase());
   }
+  const status = ACCOUNT_STATUSES.find((s) => s === raw.status);
   return {
-    type: raw.type,
+    type,
     descriptors,
-    name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : undefined,
+    name: text(raw.name, NAME_INPUT_CHARS),
+    status,
     aliases,
     xpubLabels,
     txLabels,
@@ -390,9 +458,9 @@ function readAccount(raw: unknown, index: number): Bip139Account {
  * strings are left behind rather than failing the import.
  */
 function readPsbtMap(raw: unknown): Record<string, string> {
-  if (raw === undefined) return {};
+  const out = emptyMap();
+  if (raw === undefined) return out;
   if (!isRecord(raw)) throw new Error('This BIP-139 export\'s "psbts" is not an object.');
-  const out: Record<string, string> = {};
   for (const [txid, psbt] of Object.entries(raw)) {
     if (typeof psbt === 'string' && psbt.trim()) out[txid.toLowerCase()] = psbt.trim();
   }
@@ -402,12 +470,14 @@ function readPsbtMap(raw: unknown): Record<string, string> {
 /**
  * Validates a BIP-139 export the way the BIP asks of importers — every
  * object carries its mandatory fields, at least one account — and returns
- * what this app can use. Unknown fields and enum values are ignored.
- * Descriptors are returned as written; walletImport.ts parses them.
+ * what this app can use. Unknown fields and enum values are ignored; names
+ * and labels are cleaned and capped. Descriptors are returned as written;
+ * walletImport.ts parses them.
  */
 export function readBip139(obj: Record<string, unknown>): Bip139Read {
   const warnings: string[] = [];
-  if (typeof obj.version !== 'string' || !/^BIP139-\d+$/.test(obj.version)) {
+  const strict = isBip139Version(obj.version);
+  if (!strict) {
     warnings.push(
       `The file's version is ${JSON.stringify(obj.version)} rather than "BIP139-<n>"; it was read as a BIP-139 export anyway.`
     );
@@ -418,7 +488,7 @@ export function readBip139(obj: Record<string, unknown>): Bip139Read {
   if (!Array.isArray(obj.accounts) || obj.accounts.length === 0) {
     throw new Error('This BIP-139 export has no accounts.');
   }
-  const accounts = obj.accounts.map(readAccount);
+  const accounts = obj.accounts.map((a, i) => readAccount(a, i, strict));
   // Each account's drafts: the ones it references, or — when nothing says
   // which account a draft belongs to and there is only one — all of them.
   const psbts = readPsbtMap(obj.psbts);
@@ -439,7 +509,7 @@ export function readBip139(obj: Record<string, unknown>): Bip139Read {
   return {
     network,
     networkName: obj.network,
-    name: typeof obj.name === 'string' && obj.name.trim() ? obj.name.trim() : undefined,
+    name: text(obj.name, NAME_INPUT_CHARS),
     accounts,
     warnings,
   };

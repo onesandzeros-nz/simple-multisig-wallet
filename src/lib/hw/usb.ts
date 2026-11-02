@@ -12,6 +12,9 @@ import { describeUsbError } from './usbErrors';
  * offered.
  */
 
+/** Where the device is plugged in, for the words around the device dialog. */
+export const USB_HOST: string = 'this phone';
+
 export function usbAvailable(): boolean {
   try {
     return Platform.OS === 'android' && !!UsbHost && UsbHost.isSupported === true;
@@ -20,8 +23,8 @@ export function usbAvailable(): boolean {
   }
 }
 
-/** The hardware wallets plugged in right now. */
-export function listHardwareWallets(): FoundDevice[] {
+/** The hardware wallets plugged in right now. (Async to match the desktop's usb.web.ts.) */
+export async function listHardwareWallets(): Promise<FoundDevice[]> {
   if (!usbAvailable()) return [];
   try {
     return identifyDevices(UsbHost!.listDevices());
