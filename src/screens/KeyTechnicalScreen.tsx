@@ -35,6 +35,12 @@ export default function KeyTechnicalScreen({ navigation, route }: Props) {
           {k.type === 'local' ? 'Created on this phone (BIP39, 12 words)' : 'Imported public key'}
           {k.network === 'testnet' ? ' · testnet' : ''}
         </Text>
+        {k.cardIdent && (
+          <>
+            <Label>TAPSIGNER card ID</Label>
+            <Mono text={k.cardIdent} />
+          </>
+        )}
         <Label>Master fingerprint</Label>
         <Mono text={k.fingerprint} />
         <Label>Derivation path</Label>

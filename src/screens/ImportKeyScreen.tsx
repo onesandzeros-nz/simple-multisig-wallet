@@ -83,7 +83,12 @@ export default function ImportKeyScreen({ navigation, route }: Props) {
     if (!verifyKey) return;
     setMarking(true);
     try {
-      await updateKey(verifyKey.id, recordHealthCheck(Date.now()));
+      // A tapped card also names itself, which keys imported before the
+      // card ID was kept have not recorded yet.
+      await updateKey(verifyKey.id, {
+        ...recordHealthCheck(Date.now()),
+        ...(parsed?.cardIdent ? { cardIdent: parsed.cardIdent } : {}),
+      });
       Alert.alert('Key checked', `The device still holds “${verifyKey.name}”. The next reminder starts from today.`);
       navigation.goBack();
     } catch (e: any) {
@@ -169,6 +174,7 @@ export default function ImportKeyScreen({ navigation, route }: Props) {
         fingerprint: key.fingerprint,
         path: key.path,
         source: 'tapsigner',
+        cardIdent: key.cardIdent,
       });
       if (!name) setName('TAPSIGNER');
       setNfcOpen(false);
@@ -202,6 +208,7 @@ export default function ImportKeyScreen({ navigation, route }: Props) {
           name: name.trim() || already.name,
           path: keyPath,
           source: parsed.source ?? already.source,
+          cardIdent: parsed.cardIdent ?? already.cardIdent,
         });
         const learned = parsed.source && parsed.source !== already.source ? parsed.source : null;
         Alert.alert(
@@ -224,6 +231,7 @@ export default function ImportKeyScreen({ navigation, route }: Props) {
         path: keyPath,
         network,
         source: parsed.source,
+        cardIdent: parsed.cardIdent,
         createdAt: Date.now(),
       });
       navigation.goBack();
@@ -376,6 +384,11 @@ export default function ImportKeyScreen({ navigation, route }: Props) {
                 ? `The device still holds “${verifyKey.name}” (${verifyKey.fingerprint}).`
                 : `The key read has fingerprint ${parsed.fingerprint ?? 'unknown'}, but “${verifyKey.name}” is ${verifyKey.fingerprint}. Check you used the right device, seed and account — if it really has changed, this key can no longer sign for its wallets.`}
             </Text>
+            {parsed.cardIdent && (
+              <Text style={{ color: colors.inkSoft, fontSize: 13, lineHeight: 19, marginTop: 4 }}>
+                Card ID {parsed.cardIdent}
+              </Text>
+            )}
             <Mono text={parsed.xpub} small />
           </Card>
           {matches ? (
@@ -399,6 +412,12 @@ export default function ImportKeyScreen({ navigation, route }: Props) {
             <Text style={{ color: colors.inkSoft, fontSize: 13, lineHeight: 19 }}>
               Fingerprint {parsed.fingerprint ?? 'unknown'} · path {parsed.path ?? bip48Path(parsed.network)}
             </Text>
+            {parsed.cardIdent && (
+              <>
+                <Label>Card ID</Label>
+                <Mono text={parsed.cardIdent} />
+              </>
+            )}
             <Label>Public key</Label>
             <Mono text={parsed.xpub} small />
             <Label>Key name</Label>

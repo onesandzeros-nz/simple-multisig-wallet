@@ -5,6 +5,8 @@ export interface ParsedKeyImport extends ParsedKeyExpression {
   name?: string;
   /** Set when the key came from a device that can also sign — a card, or a wallet on USB. */
   source?: KeySource;
+  /** TAPSIGNER only: the card's ID, read from the card. */
+  cardIdent?: string;
 }
 
 /**

@@ -131,6 +131,34 @@ export function encodeHardenedPath(path: string): number[] {
   });
 }
 
+const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+/**
+ * The card's human-readable ID, as Coinkite's tools and app show it:
+ * base32 of SHA256(card pubkey) with the first 8 bytes skipped, first 20
+ * characters in dashed groups of five ("XXXXX-XXXXX-XXXXX-XXXXX").
+ * Mirrors `card_pubkey_to_ident` in coinkite-tap-proto.
+ */
+export function cardIdent(cardPubkey: Buffer): string {
+  if (!Buffer.isBuffer(cardPubkey) || cardPubkey.length !== 33) {
+    throw new Error('The card did not present a usable public key.');
+  }
+  const md = Buffer.from(sha256(cardPubkey)).subarray(8);
+  let bits = 0;
+  let value = 0;
+  let out = '';
+  for (const byte of md) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5 && out.length < 20) {
+      out += BASE32[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+    value &= (1 << bits) - 1;
+  }
+  return out.match(/.{5}/g)!.join('-');
+}
+
 export function masterFingerprintFromPubkey(masterPubkey: Buffer): string {
   return Buffer.from(bitcoin.crypto.hash160(masterPubkey).subarray(0, 4)).toString('hex');
 }
@@ -224,6 +252,8 @@ export interface TapsignerKey {
   fingerprint: string;
   path: string;
   cardVersion: string;
+  /** The card's ID ("XXXXX-XXXXX-XXXXX-XXXXX"), to tell cards apart. */
+  cardIdent: string;
 }
 
 /** One input to be signed: its sighash, and where the key sits below the account. */
@@ -480,5 +510,6 @@ export async function tapsignerFetchKey(
     fingerprint: masterFingerprintFromPubkey(masterPubkey),
     path,
     cardVersion: String(status.get('ver') ?? 'unknown'),
+    cardIdent: cardIdent(cardPubkey),
   };
 }

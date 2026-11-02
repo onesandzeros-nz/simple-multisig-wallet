@@ -20,6 +20,8 @@ export interface SignerKey {
   displayName?: string;
   /** How the key arrived, when that changes how it can sign. */
   source?: KeySource;
+  /** TAPSIGNER only: the card's ID ("XXXXX-XXXXX-XXXXX-XXXXX"), so the user can tell which card holds this key. */
+  cardIdent?: string;
   type: 'local' | 'imported';
   /** Master fingerprint, 8 hex chars, lowercase. */
   fingerprint: string;

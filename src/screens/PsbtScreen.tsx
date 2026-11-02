@@ -565,7 +565,9 @@ export default function PsbtScreen({ navigation, route }: Props) {
     if (source === 'tapsigner') {
       if (hasNfc) {
         return {
-          hint: 'Hold the card against this phone to sign',
+          hint: held?.cardIdent
+            ? `Hold card ${held.cardIdent} against this phone to sign`
+            : 'Hold the card against this phone to sign',
           action: { title: 'Tap card', icon: 'radio-outline', variant: 'secondary', onPress: () => setCardSigner(c) },
         };
       }

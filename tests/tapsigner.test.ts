@@ -6,6 +6,7 @@ import * as bs58check from 'bs58check';
 import { Buffer } from 'buffer';
 import {
   calcAuth,
+  cardIdent,
   commandApdu,
   encodeHardenedPath,
   masterFingerprintFromPubkey,
@@ -36,6 +37,16 @@ describe('CKTap protocol pieces', () => {
     assert.deepEqual(Array.from(apdu.subarray(0, 4)), [0x00, 0xcb, 0x00, 0x00]);
     const decoded = decodeCbor(Buffer.from(apdu.subarray(5)));
     assert.equal(decoded.get('cmd'), 'status');
+  });
+
+  it('formats the card ID as Coinkite does (base32 of sha256(pubkey)[8:])', () => {
+    // Expected values from coinkite-tap-proto's card_pubkey_to_ident.
+    assert.equal(cardIdent(Buffer.from('02' + '11'.repeat(32), 'hex')), 'NYQKJ-36C3F-VJQ2L-ZY5K5');
+    assert.equal(
+      cardIdent(Buffer.from('03028a0e89e70d0ec0d932053a89ab1da7d9182bdc6d2f03e706ee99517d05d9e1', 'hex')),
+      'EZPVY-M7KV2-XL24A-3WMIW'
+    );
+    assert.throws(() => cardIdent(Buffer.alloc(32)), /public key/);
   });
 
   it('encodes hardened derivation paths', () => {
@@ -229,6 +240,7 @@ describe('TAPSIGNER import flow against a simulated card', () => {
     const key = await tapsignerFetchKey(transceive, '123456', bip48Path('mainnet'), rootsFor(transceive));
     assert.equal(key.path, bip48Path('mainnet'));
     assert.equal(key.fingerprint, '73c5da0a');
+    assert.match(key.cardIdent, /^[A-Z2-7]{5}(-[A-Z2-7]{5}){3}$/);
     assert.equal(key.xpub, accountXpub(MNEMONICS[0], 'mainnet'));
     assert.equal(normaliseXpub(key.xpub).network, 'mainnet');
   });

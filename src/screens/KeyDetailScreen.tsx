@@ -134,6 +134,11 @@ export default function KeyDetailScreen({ navigation, route }: Props) {
           {k.network === 'testnet' && <Tag text="Testnet" tone="accent" />}
           {usedByWallets.length > 0 && <Tag text="In use" tone="success" />}
         </View>
+        {k.cardIdent && (
+          <Text style={{ color: colors.inkSoft, fontSize: 13, lineHeight: 19 }}>
+            TAPSIGNER card {k.cardIdent}
+          </Text>
+        )}
         <Button
           title="Share public key"
           icon="share-outline"
