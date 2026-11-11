@@ -11,7 +11,9 @@ import { exportBackup, exportWalletToCard } from '../lib/exportActions';
 import { backupMissesGroup } from '../lib/groupBackup';
 import { nfcAvailable } from '../lib/nfc';
 import { describeBackupState, describeSetupRow, recordExport, startSetup } from '../lib/tutorial';
-import { formatSats } from '../lib/bitcoin';
+import { formatSats, jadeWalletName } from '../lib/bitcoin';
+import { createJadeWalletUrEncoder } from '../lib/qrExport';
+import { AnimatedQrModal } from '../components/AnimatedQrModal';
 import { loadCached } from '../lib/walletCache';
 import { WalletSnapshot } from '../lib/types';
 import { NAME_INPUT_CHARS } from '../lib/naming';
@@ -32,6 +34,8 @@ export default function WalletMenuScreen({ navigation, route }: Props) {
   const [showCoins, setShowCoins] = React.useState(false);
   const [exporting, setExporting] = React.useState<'file' | 'pdf' | 'nfc' | null>(null);
   const [hasNfc, setHasNfc] = React.useState(false);
+  const [showJadeQr, setShowJadeQr] = React.useState(false);
+  const jadeEncoder = React.useCallback(() => createJadeWalletUrEncoder(wallet!), [wallet]);
   const [nameDraft, setNameDraft] = React.useState(wallet?.name ?? '');
   const [renaming, setRenaming] = React.useState(false);
 
@@ -322,6 +326,13 @@ export default function WalletMenuScreen({ navigation, route }: Props) {
         )}
         <Divider />
         <Row
+          icon="qr-code-outline"
+          title="Show wallet to Jade (QR)"
+          subtitle="Scan it with the Jade's Scan QR to register this wallet on it"
+          onPress={() => setShowJadeQr(true)}
+        />
+        <Divider />
+        <Row
           icon="code-slash-outline"
           title="Details & descriptors"
           subtitle="Derivation paths, cosigner xpubs, exports"
@@ -330,6 +341,13 @@ export default function WalletMenuScreen({ navigation, route }: Props) {
         <Divider />
         <Row icon="trash-outline" title="Remove wallet from this phone" onPress={confirmDelete} destructive />
       </Card>
+      <AnimatedQrModal
+        visible={showJadeQr}
+        onClose={() => setShowJadeQr(false)}
+        createEncoder={jadeEncoder}
+        title={`${jadeWalletName(wallet.name)} for Jade`}
+        scanner="the Jade"
+      />
     </ScrollView>
   );
 }

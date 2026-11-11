@@ -4,6 +4,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from './ui';
 import { colors, radius } from '../theme';
+import type { UREncoder } from '@ngraveio/bc-ur';
 import { createPsbtUrEncoder, urFrameCount } from '../lib/qrExport';
 
 const SPEEDS = [
@@ -13,19 +14,26 @@ const SPEEDS = [
 ];
 
 /**
- * Displays a PSBT as an animated BC-UR QR sequence. The QR panel stays
- * white in both themes — scanners need the contrast.
+ * Displays a PSBT (`base64`) — or whatever `createEncoder` supplies — as an
+ * animated BC-UR QR sequence. The QR panel stays white in both themes —
+ * scanners need the contrast.
  */
 export function AnimatedQrModal({
   visible,
   onClose,
   base64,
+  createEncoder,
   title,
+  scanner = 'the other phone',
 }: {
   visible: boolean;
   onClose: () => void;
-  base64: string;
+  base64?: string;
+  /** Overrides `base64`: builds the sequence to show. Keep it stable (useCallback). */
+  createEncoder?: () => UREncoder;
   title: string;
+  /** What is doing the scanning, for the hint under the title. */
+  scanner?: string;
 }) {
   const [frame, setFrame] = React.useState('');
   const [speedIndex, setSpeedIndex] = React.useState(1);
@@ -36,9 +44,9 @@ export function AnimatedQrModal({
 
   React.useEffect(() => {
     if (!visible) return;
-    let encoder: ReturnType<typeof createPsbtUrEncoder>;
+    let encoder: UREncoder;
     try {
-      encoder = createPsbtUrEncoder(base64);
+      encoder = createEncoder ? createEncoder() : createPsbtUrEncoder(base64 ?? '');
       setTotal(urFrameCount(encoder));
       setError(null);
     } catch (e: any) {
@@ -54,7 +62,7 @@ export function AnimatedQrModal({
     tick();
     const id = setInterval(tick, SPEEDS[speedIndex].ms);
     return () => clearInterval(id);
-  }, [visible, base64, speedIndex]);
+  }, [visible, base64, createEncoder, speedIndex]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -82,8 +90,8 @@ export function AnimatedQrModal({
             <>
               <Text style={{ color: colors.inkSoft, fontSize: 12, marginBottom: 12, textAlign: 'center' }}>
                 {total > 1
-                  ? `${total} frames — keep the other phone pointed here until it finishes`
-                  : 'Point the other phone at this code'}
+                  ? `${total} frames — keep ${scanner} pointed here until it finishes`
+                  : `Point ${scanner} at this code`}
               </Text>
               <View style={{ backgroundColor: '#FFFFFF', padding: 12, borderRadius: 12, minHeight: 260, justifyContent: 'center' }}>
                 {frame ? <QRCode value={frame} size={236} ecl="L" /> : null}

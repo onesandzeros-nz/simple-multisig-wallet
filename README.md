@@ -83,6 +83,9 @@ Inspired by Sparrow Wallet, Bitkey and Nunchuk.
   app nags until you have exported either a Sparrow-compatible config file or a printable PDF of
   QR codes, and records when you last did. Sending the wallet to a Coldcard over NFC does not
   count — that copy lives on a signer, not away from it.
+- A Blockstream Jade registers the wallet by scanning it: wallet menu → *Show wallet to Jade (QR)*
+  shows the same animated QR Sparrow's "Jade Multisig" export does. Like the Coldcard copy, this
+  is not a backup.
 - A group wallet's backup carries the group too — the invite, and which key your group identity
   comes from — so a lost phone can rejoin: restore the key from its phrase, the wallet from its
   backup, and the coordinator seals the current group key back to a pubkey already on the roster.
@@ -593,7 +596,7 @@ none of that is the same as an audit.
 Every artefact this app produces is standard:
 
 - `wsh(sortedmulti(...))` output descriptors with Bitcoin Core checksums
-- Coldcard/Sparrow/Specter wallet config files
+- Coldcard/Sparrow/Specter wallet config files, and the same file as an animated `ur:bytes` QR for Jade
 - BIP174 PSBTs, shared as base64 or `ur:crypto-psbt` animated QR
 - Descriptor key expressions in Sparrow's format: `[fingerprint/48h/0h/0h/2h]xpub…`
 

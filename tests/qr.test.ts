@@ -6,10 +6,10 @@ import Bytewords from '@ngraveio/bc-ur/dist/bytewords';
 import * as bs58check from 'bs58check';
 import { Buffer } from 'buffer';
 import { createQrAssembler } from '../src/lib/qrParts';
-import { createPsbtUrEncoder, urFrameCount } from '../src/lib/qrExport';
+import { createJadeWalletUrEncoder, createPsbtUrEncoder, urFrameCount } from '../src/lib/qrExport';
 import { buildPsbt } from '../src/lib/wallet';
 import { makeSnapshot, DEST_MAINNET } from './helpers';
-import { deriveAddress, walletDescriptor } from '../src/lib/bitcoin';
+import { deriveAddress, jadeMultisigFile, jadeWalletName, walletDescriptor } from '../src/lib/bitcoin';
 import { encodeCbor, decodeCbor, Tagged } from '../src/lib/cbor';
 import {
   cryptoAccountToText,
@@ -381,5 +381,53 @@ describe('Animated QR robustness', () => {
     let result: ReturnType<typeof asm.receive> | undefined;
     for (const f of frames) result = asm.receive(f);
     assert.ok(result?.done);
+  });
+});
+
+describe('Jade wallet export', () => {
+  const named = makeWallet(2, MNEMONICS.slice(0, 3), 'mainnet', 'Family Savings! 2026');
+
+  it('writes the setup file a Jade accepts', () => {
+    const lines = jadeMultisigFile(named).split('\n');
+    // The Jade rejects unknown lines and whitespace-only lines, and wants
+    // Name, Policy, Format and a Derivation before the first key.
+    for (const line of lines) {
+      assert.match(line, /^(#.*|(Name|Policy|Format|Derivation): \S.*|[0-9A-F]{8}: xpub\w+|)$/);
+    }
+    const body = lines.filter((l) => l && !l.startsWith('#'));
+    assert.deepEqual(body.slice(0, 4), ['Name: Family_Savings_', 'Policy: 2 of 3', 'Format: P2WSH', "Derivation: m/48'/0'/0'/2'"]);
+    assert.equal(body.filter((l) => /^[0-9A-F]{8}: /.test(l)).length, 3);
+    assert.ok(!jadeMultisigFile(named).includes('\r'));
+  });
+
+  it('keeps names within what a Jade stores', () => {
+    assert.equal(jadeWalletName('Stacked Multisig 3'), 'Stacked_Multisi');
+    assert.equal(jadeWalletName('  a  b '), 'a_b');
+    assert.equal(jadeWalletName('Vault-2_x'), 'Vault-2_x');
+    assert.equal(jadeWalletName('金庫 !!'), 'Multisig');
+  });
+
+  it('animates it as ur:bytes, and the frames scan back to the same wallet', () => {
+    const encoder = createJadeWalletUrEncoder(named);
+    assert.ok(urFrameCount(encoder) > 1, 'a 2-of-3 setup file should need several frames');
+    const asm = createQrAssembler();
+    let result;
+    for (let i = 0; i < 200; i++) {
+      const frame = encoder.nextPart();
+      assert.match(frame, /^ur:bytes\//);
+      result = asm.receive(frame.toUpperCase());
+      if (result.done) break;
+    }
+    assert.ok(result?.done, 'transfer never completed');
+    assert.equal(result!.text, jadeMultisigFile(named));
+    const parsed = parseWalletImportText(result!.text!);
+    assert.equal(parsed.name, 'Family_Savings_');
+    assert.equal(parsed.m, 2);
+    const imported: MultisigWallet = { ...named, cosigners: parsed.cosigners };
+    assert.equal(deriveAddress(imported, 0, 0).address, deriveAddress(named, 0, 0).address);
+  });
+
+  it('carries testnet keys as tpub', () => {
+    assert.match(jadeMultisigFile(makeWallet(2, MNEMONICS.slice(0, 2), 'testnet')), /^[0-9A-F]{8}: tpub/m);
   });
 });

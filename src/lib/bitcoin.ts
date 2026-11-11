@@ -151,6 +151,40 @@ export function walletConfigFile(wallet: MultisigWallet): string {
   return lines.join('\n');
 }
 
+/**
+ * The name a Jade will store the wallet under: at most 15 characters, and
+ * only letters, digits, `_` and `-` (the Jade turns spaces into `_` itself
+ * and asks about anything it has to cut short).
+ */
+export function jadeWalletName(name: string): string {
+  const safe = name
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^A-Za-z0-9_-]/g, '')
+    .slice(0, 15);
+  return /[A-Za-z0-9]/.test(safe) ? safe : 'Multisig';
+}
+
+/**
+ * The multisig setup file a Blockstream Jade registers a wallet from — the
+ * Coldcard layout, as Sparrow writes it for Jade. The Jade refuses lines it
+ * does not know and whitespace-only lines, so this stays minimal.
+ */
+export function jadeMultisigFile(wallet: MultisigWallet): string {
+  const lines = [
+    '# Jade Multisig setup file (created by Simple Multisig)',
+    '#',
+    `Name: ${jadeWalletName(wallet.name)}`,
+    `Policy: ${wallet.m} of ${wallet.n}`,
+    'Format: P2WSH',
+    '',
+  ];
+  for (const c of wallet.cosigners) {
+    lines.push(`Derivation: ${c.path}`, `${c.fingerprint.toUpperCase()}: ${c.xpub}`, '');
+  }
+  return lines.join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // Fee / size estimation
 // ---------------------------------------------------------------------------
