@@ -5,6 +5,8 @@ import { usePreventScreenCapture } from 'expo-screen-capture';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Buffer } from 'buffer';
+import { walletImportTextFromBytes } from '../lib/walletImport';
 import { Screen, Card, Button, Input, Label, Mono, Tag, EmptyState, IconName } from '../components/ui';
 import { colors, radius } from '../theme';
 import { showError } from '../lib/errors';
@@ -81,7 +83,11 @@ export default function VerifyBackupScreen({ navigation, route }: Props) {
         multiple: false,
       });
       if (result.canceled || !result.assets?.[0]) return;
-      const content = await FileSystem.readAsStringAsync(result.assets[0].uri);
+      // Read as base64 so a binary Sparrow wallet file survives.
+      const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const content = walletImportTextFromBytes(Buffer.from(base64, 'base64'), result.assets[0].name);
       await runCheck(content);
     } catch (e: any) {
       showError('backup:verify-file', e);

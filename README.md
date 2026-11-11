@@ -59,8 +59,9 @@ Inspired by Sparrow Wallet, Bitkey and Nunchuk.
   wallet from its backup and is let straight back in — see [RECOVERY-DESIGN.md](RECOVERY-DESIGN.md).
 - Native segwit **P2WSH**, **BIP48** derivation, **BIP67** sorted keys, so addresses match Sparrow,
   Coldcard, Specter and Nunchuk exactly.
-- Import an existing wallet from an output descriptor, a Coldcard/Sparrow config file, or a JSON
-  export — by paste, file, or QR.
+- Import an existing wallet from an output descriptor, a BSMS file (BIP-129), a Coldcard/Sparrow
+  config file, a JSON export (Specter, Electrum, Bitcoin Core), Sparrow's Bitcoin Core export, or
+  a Sparrow wallet file (`.mv.db`, unencrypted) — by paste, file, or QR.
 
 **Spending**
 - Balance, coins and history from your own server, cached and refreshed incrementally.
@@ -353,7 +354,8 @@ src/
     slip132.ts        Zpub/Vpub/… normalisation, descriptor key expressions, the fingerprint rule
     descriptor.ts     Bitcoin Core descriptor checksum
     cryptoOutput.ts   BC-UR crypto-output (descriptor QR codes) back into a text descriptor
-    walletImport.ts   descriptor, config-file and JSON wallet parsing
+    walletImport.ts   descriptor, BSMS, config-file and JSON wallet parsing
+    sparrowFile.ts    reads the policy and keys out of a Sparrow wallet file (H2 MVStore)
     walletExport.ts   Sparrow-compatible backup file and printable QR backup
     walletMatch.ts    when two wallet records describe the same on-chain wallet
     backupVerify.ts   compares a scanned/opened backup with a wallet without importing it

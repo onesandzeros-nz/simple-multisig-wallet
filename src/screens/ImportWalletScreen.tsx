@@ -3,12 +3,13 @@ import { Alert, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Buffer } from 'buffer';
 import { Screen, Card, Button, Input, Label, Tag, SectionTitle } from '../components/ui';
 import { colors } from '../theme';
 import { showError } from '../lib/errors';
 import { useStore, newId, loadMnemonic } from '../lib/store';
 import { accountXpub } from '../lib/bitcoin';
-import { parseWalletImportText } from '../lib/walletImport';
+import { parseWalletImportText, walletImportTextFromBytes } from '../lib/walletImport';
 import { groupFromBackupText, restoreMismatch } from '../lib/groupBackup';
 import { RootStackParamList } from '../navigation';
 
@@ -33,8 +34,21 @@ export default function ImportWalletScreen({ navigation, route }: Props) {
         multiple: false,
       });
       if (result.canceled || !result.assets?.[0]) return;
-      const content = await FileSystem.readAsStringAsync(result.assets[0].uri);
+      // Read as base64 so a binary Sparrow wallet file survives; text files
+      // come back out as the text they are.
+      const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const content = walletImportTextFromBytes(Buffer.from(base64, 'base64'), result.assets[0].name);
       setText(content);
+      // BSMS and Bitcoin Core files carry no wallet name; their file name usually is one.
+      try {
+        if (!name.trim() && !parseWalletImportText(content).name) {
+          setName(result.assets[0].name.replace(/\.[A-Za-z0-9]{1,5}$/, '').slice(0, 60));
+        }
+      } catch {
+        // unreadable — the preview explains why
+      }
     } catch (e: any) {
       showError('wallet:import-file', e);
     }
@@ -127,14 +141,15 @@ export default function ImportWalletScreen({ navigation, route }: Props) {
       <Card>
         <Text style={{ fontSize: 17, fontWeight: '600', color: colors.ink }}>Import a wallet</Text>
         <Text style={{ color: colors.inkSoft, marginTop: 6, fontSize: 14, lineHeight: 20 }}>
-          Import an output descriptor, a wallet config file, or a JSON export (Specter, Electrum)
-          from this app, Sparrow, Coldcard, Specter or Nunchuk — by pasting, scanning QR codes, or
-          opening a file. All of these contain only public keys.
+          Import an output descriptor, a BSMS file, a wallet config file, a JSON export (Specter,
+          Electrum, Bitcoin Core) or a Sparrow wallet file — from this app, Sparrow, Coldcard,
+          Specter, Nunchuk or Bitcoin Core — by pasting, scanning QR codes, or opening a file. Only
+          public keys are read.
         </Text>
       </Card>
 
       <Card>
-        <Label>Descriptor, config file or JSON</Label>
+        <Label>Descriptor, BSMS, config file or JSON</Label>
         <Input
           placeholder={'wsh(sortedmulti(2,[…]xpub…,…))  or  "Policy: 2 of 3" config text'}
           value={text}
