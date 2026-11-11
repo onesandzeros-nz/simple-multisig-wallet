@@ -5,7 +5,10 @@ import { Screen, Card, Button, SectionTitle, Label, Mono, Tag } from '../compone
 import { colors } from '../theme';
 import { useStore } from '../lib/store';
 import { showError } from '../lib/errors';
-import { exportWalletToCard } from '../lib/exportActions';
+import { exportInteropFile, exportWalletToCard } from '../lib/exportActions';
+import { InteropFormat } from '../lib/walletExport';
+import { createPassportWalletUrEncoder } from '../lib/qrExport';
+import { AnimatedQrModal } from '../components/AnimatedQrModal';
 import { nfcAvailable } from '../lib/nfc';
 import { recordExport } from '../lib/tutorial';
 import { walletDescriptor, walletConfigFile, deriveAddress } from '../lib/bitcoin';
@@ -17,12 +20,26 @@ export default function AdvancedScreen({ route }: Props) {
   const { wallets, keys, updateWallet } = useStore();
   const [hasNfc, setHasNfc] = React.useState(false);
   const [sending, setSending] = React.useState(false);
+  const [exporting, setExporting] = React.useState<InteropFormat | null>(null);
+  const [showPassportQr, setShowPassportQr] = React.useState(false);
 
   React.useEffect(() => {
     nfcAvailable().then(setHasNfc);
   }, []);
   const wallet = wallets.find((w) => w.id === route.params.walletId);
+  const passportEncoder = React.useCallback(() => createPassportWalletUrEncoder(wallet!), [wallet]);
   if (!wallet) return null;
+
+  const exportAs = async (format: InteropFormat) => {
+    setExporting(format);
+    try {
+      await exportInteropFile(wallet, format);
+    } catch (e: any) {
+      showError(`wallet:export-${format}`, e);
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const descriptor = walletDescriptor(wallet);
   const receiveDescriptor = walletDescriptor(wallet, 0);
@@ -121,6 +138,51 @@ export default function AdvancedScreen({ route }: Props) {
           />
         )}
       </Card>
+
+      <SectionTitle>Export to other wallets</SectionTitle>
+      <Card>
+        <Text style={{ color: colors.inkSoft, marginBottom: 4, fontSize: 13, lineHeight: 19 }}>
+          Files other wallets import to watch this wallet and take part in signing. Public keys
+          only — but anyone holding one can see the wallet's balance and history.
+        </Text>
+        <Label>Sparrow, Bitcoin Core</Label>
+        <Button
+          title="Output descriptor file"
+          icon="document-text-outline"
+          variant="secondary"
+          loading={exporting === 'descriptor'}
+          onPress={() => exportAs('descriptor')}
+        />
+        <Label>Sparrow, Nunchuk, Coldcard — BSMS (BIP-129)</Label>
+        <Button
+          title="BSMS file"
+          icon="document-text-outline"
+          variant="secondary"
+          loading={exporting === 'bsms'}
+          onPress={() => exportAs('bsms')}
+        />
+        <Label>Foundation Passport — Settings › Bitcoin › Multisig › Import</Label>
+        <Button
+          title="Passport file (microSD)"
+          icon="document-text-outline"
+          variant="secondary"
+          loading={exporting === 'passport'}
+          onPress={() => exportAs('passport')}
+        />
+        <Button
+          title="Show QR to Passport"
+          icon="qr-code-outline"
+          variant="secondary"
+          onPress={() => setShowPassportQr(true)}
+        />
+      </Card>
+      <AnimatedQrModal
+        visible={showPassportQr}
+        onClose={() => setShowPassportQr(false)}
+        createEncoder={passportEncoder}
+        title={`${wallet.name} for Passport`}
+        scanner="the Passport"
+      />
 
       <SectionTitle>First addresses</SectionTitle>
       <Card>

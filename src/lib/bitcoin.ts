@@ -171,10 +171,25 @@ export function jadeWalletName(name: string): string {
  * does not know and whitespace-only lines, so this stays minimal.
  */
 export function jadeMultisigFile(wallet: MultisigWallet): string {
+  return multisigSetupFile(wallet, 'Jade', jadeWalletName(wallet.name));
+}
+
+/**
+ * The multisig setup file a Foundation Passport imports from microSD or QR —
+ * again the Coldcard layout, as Sparrow writes it for Passport. Names are
+ * limited to 20 printable ASCII characters, as on a Coldcard.
+ */
+export function passportMultisigFile(wallet: MultisigWallet): string {
+  const name = wallet.name.replace(/[^ -~]/g, '').trim().slice(0, 20).trim();
+  return multisigSetupFile(wallet, 'Passport', name || 'Multisig');
+}
+
+/** Sparrow's Coldcard-family export: header, policy, then a derivation and key per cosigner. */
+function multisigSetupFile(wallet: MultisigWallet, device: string, name: string): string {
   const lines = [
-    '# Jade Multisig setup file (created by Simple Multisig)',
+    `# ${device} Multisig setup file (created by Simple Multisig)`,
     '#',
-    `Name: ${jadeWalletName(wallet.name)}`,
+    `Name: ${name}`,
     `Policy: ${wallet.m} of ${wallet.n}`,
     'Format: P2WSH',
     '',

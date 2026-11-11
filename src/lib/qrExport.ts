@@ -1,6 +1,6 @@
 import { UR, UREncoder } from '@ngraveio/bc-ur';
 import { Buffer } from 'buffer';
-import { jadeMultisigFile } from './bitcoin';
+import { jadeMultisigFile, passportMultisigFile } from './bitcoin';
 import { encodeCbor } from './cbor';
 import { MultisigWallet } from './types';
 
@@ -28,6 +28,11 @@ export function createPsbtUrEncoder(base64Psbt: string, fragmentBytes = DEFAULT_
  */
 export function createJadeWalletUrEncoder(wallet: MultisigWallet, fragmentBytes = DEFAULT_FRAGMENT_BYTES) {
   return new UREncoder(UR.fromBuffer(Buffer.from(jadeMultisigFile(wallet), 'utf8')), fragmentBytes);
+}
+
+/** The same for a Foundation Passport (Settings › Bitcoin › Multisig › Import from QR Code). */
+export function createPassportWalletUrEncoder(wallet: MultisigWallet, fragmentBytes = DEFAULT_FRAGMENT_BYTES) {
+  return new UREncoder(UR.fromBuffer(Buffer.from(passportMultisigFile(wallet), 'utf8')), fragmentBytes);
 }
 
 /** Total frames in one pass — used to show "1 of N" while animating. */
