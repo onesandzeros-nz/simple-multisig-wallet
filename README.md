@@ -596,7 +596,8 @@ none of that is the same as an audit.
 Every artefact this app produces is standard:
 
 - `wsh(sortedmulti(...))` output descriptors with Bitcoin Core checksums
-- Coldcard/Sparrow/Specter wallet config files, and the same file as an animated `ur:bytes` QR for Jade
+- Coldcard/Sparrow/Specter wallet config files, and the same file as an animated `ur:bytes` QR for Jade and Passport
+- Output descriptor files in Sparrow's layout, and BSMS 1.0 (BIP-129) descriptor records
 - BIP174 PSBTs, shared as base64 or `ur:crypto-psbt` animated QR
 - Descriptor key expressions in Sparrow's format: `[fingerprint/48h/0h/0h/2h]xpub…`
 

@@ -1,4 +1,4 @@
-import { walletConfigFile, walletDescriptor, deriveAddress } from './bitcoin';
+import { passportMultisigFile, walletConfigFile, walletDescriptor, deriveAddress } from './bitcoin';
 import { GroupBackup, groupBackupLines } from './groupBackup';
 import { MultisigWallet } from './types';
 
@@ -28,6 +28,46 @@ export function walletBackupFile(wallet: MultisigWallet, group?: GroupBackup | n
     '',
     walletConfigFile(wallet),
   ].join('\n');
+}
+
+/**
+ * A BSMS 1.0 descriptor record (BIP-129), exactly as Sparrow writes it:
+ * the descriptor, the receive/change paths, and the first receive address
+ * for the importing wallet to check itself against.
+ */
+export function walletBsmsFile(wallet: MultisigWallet): string {
+  const descriptor = walletDescriptor(wallet).split('#')[0];
+  return ['BSMS 1.0', descriptor, '/0/*,/1/*', deriveAddress(wallet, 0, 0).address].join('\n');
+}
+
+/**
+ * The output descriptor text file Sparrow exports and imports, and whose
+ * descriptors Bitcoin Core's `importdescriptors` takes: the combined
+ * (BIP389 multipath) descriptor, then receive and change on their own.
+ */
+export function walletDescriptorFile(wallet: MultisigWallet): string {
+  return [
+    '# Receive and change descriptor:',
+    walletDescriptor(wallet),
+    '',
+    '',
+    '# Receive descriptor:',
+    walletDescriptor(wallet, 0),
+    '',
+    '# Change descriptor:',
+    walletDescriptor(wallet, 1),
+    '',
+  ].join('\n');
+}
+
+export type InteropFormat = 'descriptor' | 'bsms' | 'passport';
+
+/** File name and contents of a wallet in another wallet's import format. */
+export function interopFile(wallet: MultisigWallet, format: InteropFormat): { name: string; content: string } {
+  const base = exportBaseName(wallet);
+  if (format === 'bsms') return { name: `${base}.bsms`, content: walletBsmsFile(wallet) };
+  if (format === 'passport') return { name: `${base}-passport.txt`, content: passportMultisigFile(wallet) };
+  return { name: `${base}-descriptor.txt`, content: walletDescriptorFile(wallet) };
 }
 
 function escapeHtml(text: string): string {

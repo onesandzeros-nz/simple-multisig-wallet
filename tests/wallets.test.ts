@@ -10,7 +10,10 @@ import {
   ParsedWallet,
 } from '../src/lib/walletImport';
 import { MultisigWallet } from '../src/lib/types';
-import { exportBaseName, walletBackupFile } from '../src/lib/walletExport';
+import { exportBaseName, interopFile, walletBackupFile, walletBsmsFile, walletDescriptorFile } from '../src/lib/walletExport';
+import { passportMultisigFile } from '../src/lib/bitcoin';
+import { createPassportWalletUrEncoder } from '../src/lib/qrExport';
+import { createQrAssembler } from '../src/lib/qrParts';
 import { backupPdfHtml } from '../src/lib/walletExport';
 import { MNEMONICS, makeWallet } from './helpers';
 import { adoptAsGroupWallet, findSameWallet, sameWalletPolicy } from '../src/lib/walletMatch';
@@ -462,5 +465,64 @@ describe('group backups', () => {
     assert.equal(restoreMismatch({ m: 2, n: 3, network: 'mainnet' }, wallet), null);
     assert.match(restoreMismatch({ m: 2, n: 2, network: 'mainnet' }, wallet) ?? '', /2 of 2/);
     assert.match(restoreMismatch({ m: 2, n: 3, network: 'testnet' }, wallet) ?? '', /testnet/);
+  });
+});
+
+describe('exports for other wallets', () => {
+  const wallet = makeWallet(2, MNEMONICS.slice(0, 3), 'mainnet', 'Family Savings! Long-term vault');
+
+  it('writes a BSMS 1.0 record the way Sparrow does', () => {
+    const lines = walletBsmsFile(wallet).split('\n');
+    assert.equal(lines.length, 4);
+    assert.equal(lines[0], 'BSMS 1.0');
+    assert.match(lines[1], /^wsh\(sortedmulti\(2,\[[0-9a-f]{8}\/48h\/0h\/0h\/2h\]xpub\w+\/<0;1>\/\*,.*\)\)$/);
+    assert.ok(!lines[1].includes('#'), 'no checksum on the BSMS descriptor line');
+    assert.equal(lines[2], '/0/*,/1/*');
+    assert.equal(lines[3], deriveAddress(wallet, 0, 0).address);
+    assert.deepEqual(firstAddresses(walletFromParsed(parseWalletDescriptor(lines[1]))), firstAddresses(wallet));
+  });
+
+  it('writes the output descriptor file with combined, receive and change descriptors', () => {
+    const file = walletDescriptorFile(wallet);
+    const descriptors = file.split('\n').filter((l) => l && !l.startsWith('#'));
+    assert.deepEqual(descriptors, [walletDescriptor(wallet), walletDescriptor(wallet, 0), walletDescriptor(wallet, 1)]);
+    assert.deepEqual(
+      file.split('\n').filter((l) => l.startsWith('#')),
+      ['# Receive and change descriptor:', '# Receive descriptor:', '# Change descriptor:']
+    );
+    for (const d of descriptors) {
+      assert.deepEqual(firstAddresses(walletFromParsed(parseWalletDescriptor(d))), firstAddresses(wallet));
+    }
+  });
+
+  it('writes a Passport setup file that reads back as the same wallet', () => {
+    const file = passportMultisigFile(wallet);
+    assert.match(file, /^# Passport Multisig setup file/);
+    assert.match(file, /^Name: Family Savings! Long$/m);
+    const parsed = parseWalletConfigFile(file);
+    assert.equal(parsed.m, 2);
+    assert.deepEqual(firstAddresses(walletFromParsed(parsed)), firstAddresses(wallet));
+    assert.match(passportMultisigFile({ ...wallet, name: '金庫' }), /^Name: Multisig$/m);
+  });
+
+  it('shows the Passport file as ur:bytes frames', () => {
+    const encoder = createPassportWalletUrEncoder(wallet);
+    const asm = createQrAssembler();
+    let result;
+    for (let i = 0; i < 200; i++) {
+      const frame = encoder.nextPart();
+      assert.match(frame, /^ur:bytes\//);
+      result = asm.receive(frame);
+      if (result.done) break;
+    }
+    assert.ok(result?.done, 'transfer never completed');
+    assert.equal(result!.text, passportMultisigFile(wallet));
+  });
+
+  it('names each file for its format', () => {
+    assert.equal(interopFile(wallet, 'bsms').name, 'Family-Savings-Long-term-vault-2of3.bsms');
+    assert.equal(interopFile(wallet, 'descriptor').name, 'Family-Savings-Long-term-vault-2of3-descriptor.txt');
+    assert.equal(interopFile(wallet, 'passport').name, 'Family-Savings-Long-term-vault-2of3-passport.txt');
+    assert.equal(interopFile(wallet, 'bsms').content, walletBsmsFile(wallet));
   });
 });

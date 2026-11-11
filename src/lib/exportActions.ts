@@ -6,7 +6,7 @@ import { keyExpression, walletConfigFile, walletDescriptor } from './bitcoin';
 import { writeTextToTag } from './nfc';
 import { loadGroupSecret } from './store';
 import { Group, MultisigWallet, SignerKey } from './types';
-import { backupPdfHtml, exportBaseName, walletBackupFile } from './walletExport';
+import { backupPdfHtml, exportBaseName, InteropFormat, interopFile, walletBackupFile } from './walletExport';
 import { GroupBackup, groupBackupFor } from './groupBackup';
 
 /** Renders a QR as an inline SVG string for the printable backup. */
@@ -69,6 +69,14 @@ export async function exportWalletFile(wallet: MultisigWallet, group?: GroupBack
   const uri = `${FileSystem.cacheDirectory}${exportBaseName(wallet)}.txt`;
   await FileSystem.writeAsStringAsync(uri, walletBackupFile(wallet, group));
   await shareFile(uri, 'text/plain', `${wallet.name} backup`);
+}
+
+/** Writes the wallet in another wallet's import format and opens the share sheet. */
+export async function exportInteropFile(wallet: MultisigWallet, format: InteropFormat): Promise<void> {
+  const file = interopFile(wallet, format);
+  const uri = `${FileSystem.cacheDirectory}${file.name}`;
+  await FileSystem.writeAsStringAsync(uri, file.content);
+  await shareFile(uri, 'text/plain', file.name);
 }
 
 /**
