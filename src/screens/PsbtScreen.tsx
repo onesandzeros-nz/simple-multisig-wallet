@@ -169,20 +169,24 @@ export default function PsbtScreen({ navigation, route }: Props) {
                 setTimeout(() => setCopiedTxid(false), 1500);
               }}
             />
-            <Button
-              title={`See on ${explorerName()}`}
-              icon="open-outline"
-              variant="secondary"
-              onPress={() =>
-                Linking.openURL(explorer).catch((e) => showError('psbt:explorer', e))
-              }
-            />
-            <Button
-              title="Share link"
-              icon="share-outline"
-              variant="ghost"
-              onPress={() => Share.share({ message: explorer })}
-            />
+            {explorer && (
+              <>
+                <Button
+                  title={`See on ${explorerName(wallet.network)}`}
+                  icon="open-outline"
+                  variant="secondary"
+                  onPress={() =>
+                    Linking.openURL(explorer).catch((e) => showError('psbt:explorer', e))
+                  }
+                />
+                <Button
+                  title="Share link"
+                  icon="share-outline"
+                  variant="ghost"
+                  onPress={() => Share.share({ message: explorer })}
+                />
+              </>
+            )}
             <Button title="Done" large onPress={() => navigation.popToTop()} />
           </View>
         </Card>

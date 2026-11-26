@@ -1,7 +1,7 @@
 import {
   broadcastTx as esploraBroadcast,
   DEFAULT_SERVER as DEFAULT_ESPLORA_SERVER,
-  esploraServer,
+  esploraGenesis,
   esploraWebBase,
   fetchAddressStats,
   fetchAddressTxs,
@@ -223,8 +223,10 @@ function resetElectrum(): void {
 export function setBackend(next: BackendConfig): void {
   config = next;
   resetElectrum();
-  // The Esplora client keeps its own module state for URL building.
-  setEsploraServer(next.kind === 'esplora' ? next.url : null);
+  // The Esplora client keeps its own module state for URL building. The
+  // public servers have a known layout; anyone's own server is looked at
+  // first, since a bare electrs keeps its API somewhere else than mempool does.
+  setEsploraServer(next.kind === 'esplora' ? next.url : null, { discover: !isPublicBackend(next) });
 }
 
 export function currentBackend(): BackendConfig {
@@ -291,10 +293,14 @@ export function broadcastTx(network: NetworkName, txHex: string): Promise<string
   return electrumAdapter(network).broadcast(txHex);
 }
 
-/** Checks a candidate backend without making it the active one. */
-export async function testBackend(candidate: BackendConfig): Promise<number> {
+/**
+ * Checks a candidate backend without making it the active one. `network` is
+ * the one wallets are being made on: a mempool-compatible server is checked
+ * for that network, wherever on the server it lives.
+ */
+export async function testBackend(candidate: BackendConfig, network: NetworkName = 'mainnet'): Promise<number> {
   if (candidate.kind === 'esplora') {
-    return fetchTipHeightFrom(candidate.url ?? DEFAULT_ESPLORA_SERVER);
+    return fetchTipHeightFrom(candidate.url ?? DEFAULT_ESPLORA_SERVER, network);
   }
   const probe = new ElectrumClient(electrumTargetOf(candidate), socketFactory);
   try {
@@ -308,26 +314,42 @@ export async function testBackend(candidate: BackendConfig): Promise<number> {
 /** The explorer links open on when the wallet has no web explorer of its own. */
 const MEMPOOL_WEB = 'https://mempool.space';
 
+/** The chains mempool.space shows, by the hash of block 0. */
+const MEMPOOL_WEB_BY_GENESIS: Record<string, string> = {
+  '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f': MEMPOOL_WEB,
+  '000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943': `${MEMPOOL_WEB}/testnet`,
+  '00000000da84f2bafbbc53dee25a72ae507ff4914b867c565be350b0da8bf043': `${MEMPOOL_WEB}/testnet4`,
+};
+
 /**
  * Where links open. A server the user runs themselves is normally a mempool
  * instance with its own web interface, so links go there and the lookup
  * stays off the public internet. Otherwise mempool.space: the public picks
  * are chosen for their API, not their website, and an Electrum server has
- * no website at all.
+ * no website at all. Nor does a bare Esplora/electrs API; there the chain it
+ * serves is known, and null means mempool.space has no page for that chain
+ * (a newer or private test network).
  */
-function explorerBase(network: NetworkName): string {
+function explorerBase(network: NetworkName): string | null {
   if (config.kind === 'esplora' && config.url && !isPublicBackend(config)) {
-    return esploraWebBase(network);
+    const own = esploraWebBase(network);
+    if (own) return own;
+    const genesis = esploraGenesis(network);
+    if (genesis) return MEMPOOL_WEB_BY_GENESIS[genesis] ?? null;
   }
   return network === 'mainnet' ? MEMPOOL_WEB : `${MEMPOOL_WEB}/testnet`;
 }
 
-/** Where to send someone to look at a transaction. */
-export function txExplorerUrl(network: NetworkName, txid: string): string {
+/**
+ * Where to send someone to look at a transaction, or null when no explorer
+ * we know of shows the chain this wallet's server is on.
+ */
+export function txExplorerUrl(network: NetworkName, txid: string): string | null {
   // A txid usually comes from the server — never trust its shape inside a
   // URL. Anything that is not 64 hex chars degrades to the explorer root.
   const safe = /^[0-9a-f]{64}$/i.test(txid) ? txid : '';
   const base = explorerBase(network);
+  if (!base) return null;
   return safe ? `${base}/tx/${safe}` : base;
 }
 
@@ -337,8 +359,8 @@ export function explorerIsPublic(): boolean {
 }
 
 /** The site a transaction link opens on, for button labels. */
-export function explorerName(): string {
-  const base = explorerBase('mainnet');
+export function explorerName(network: NetworkName = 'mainnet'): string {
+  const base = explorerBase(network) ?? MEMPOOL_WEB;
   try {
     return new URL(base).host;
   } catch {

@@ -1,11 +1,15 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  apiBaseCandidates,
+  broadcastTx,
   describeBroadcastError,
+  discoverApiLayout,
   esploraServer,
   esploraWebBase,
   fetchAddressStats,
   fetchFees,
+  fetchTipHeightFrom,
   fetchTxHex,
   fetchUtxos,
   feesFromEstimates,
@@ -13,7 +17,51 @@ import {
   setEsploraServer,
   setRetrySleep,
 } from '../src/lib/esplora';
-import { fetchTxHex as chainTxHex, setBackend, txExplorerUrl } from '../src/lib/chain';
+import { explorerName, fetchTxHex as chainTxHex, setBackend, testBackend, txExplorerUrl } from '../src/lib/chain';
+
+const GENESIS = {
+  mainnet: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+  testnet3: '000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943',
+  testnet4: '00000000da84f2bafbbc53dee25a72ae507ff4914b867c565be350b0da8bf043',
+  /** A test network mempool.space has no pages for. */
+  other: '00000000000008c1637e7d3252dc1c333d4546fd6fff6a474b200d674a91d497',
+};
+
+/**
+ * A fake server: `chains` maps an API base (as a path, '' for the root) to
+ * the genesis hash served there. Every other path answers 404, the way
+ * electrs does, or with a web page when `website` is set, the way a mempool
+ * front end does. Returns the paths asked for.
+ */
+function fakeServer(
+  origin: string,
+  chains: Record<string, string>,
+  options: { website?: boolean; noGenesis?: boolean } = {}
+): string[] {
+  const asked: string[] = [];
+  globalThis.fetch = (async (input: any, init?: any) => {
+    const url = String(input);
+    assert.ok(url.startsWith(origin), `asked another server: ${url}`);
+    const path = url.slice(origin.length);
+    asked.push(path);
+    // Longest base first, so '/testnet/api/x' is not taken for '' + '/testnet/api/x'.
+    const bases = Object.keys(chains).sort((a, b) => b.length - a.length);
+    for (const base of bases) {
+      if (!path.startsWith(`${base}/`)) continue;
+      const rest = path.slice(base.length);
+      if (rest === '/block-height/0' && !options.noGenesis) return new Response(chains[base]);
+      if (rest === '/blocks/tip/height') return new Response('8325');
+      if (/^\/tx\/[0-9a-f]{64}\/hex$/.test(rest)) return new Response('0200abcd');
+      if (rest === '/tx' && init?.method === 'POST') return new Response('ab'.repeat(32));
+      if (/^\/address\/[a-z0-9]+\/utxo$/.test(rest)) return new Response('[]');
+      if (rest === '/fee-estimates') return new Response(JSON.stringify({ '1': 7, '6': 3 }));
+    }
+    return options.website
+      ? new Response(`<!doctype html><html>${'x'.repeat(500)}</html>`, { status: 200 })
+      : new Response(`endpoint does not exist "${path}"`, { status: 404 });
+  }) as typeof fetch;
+  return asked;
+}
 
 describe('esplora server override', () => {
   after(() => setBackend({ kind: 'esplora', url: null }));
@@ -177,7 +225,8 @@ describe('raw transactions', () => {
   const txid = 'ab'.repeat(32);
 
   it('asks for the hex of a transaction, on the right network', async () => {
-    setBackend({ kind: 'esplora', url: 'https://node.example' });
+    // A public server: its layout is known, so nothing is asked but the hex.
+    setBackend({ kind: 'esplora', url: 'https://mempool.space' });
     const asked: string[] = [];
     globalThis.fetch = (async (url: string) => {
       asked.push(String(url));
@@ -186,8 +235,8 @@ describe('raw transactions', () => {
     assert.equal(await fetchTxHex('mainnet', txid.toUpperCase()), '0200abcd');
     assert.equal(await chainTxHex('testnet', txid), '0200abcd');
     assert.deepEqual(asked, [
-      `https://node.example/api/tx/${txid}/hex`,
-      `https://node.example/testnet/api/tx/${txid}/hex`,
+      `https://mempool.space/api/tx/${txid}/hex`,
+      `https://mempool.space/testnet/api/tx/${txid}/hex`,
     ]);
   });
 
@@ -203,6 +252,7 @@ describe('raw transactions', () => {
   });
 
   it('refuses a reply that is not hex', async () => {
+    setBackend({ kind: 'esplora', url: null });
     globalThis.fetch = (async () => new Response('<html>Not found</html>', { status: 200 })) as typeof fetch;
     await assert.rejects(fetchTxHex('mainnet', txid), /malformed/);
     globalThis.fetch = (async () => new Response('abc', { status: 200 })) as typeof fetch;
@@ -267,5 +317,144 @@ describe('fee estimates', () => {
       throw new Error(`unexpected ${url}`);
     }) as typeof fetch;
     assert.equal((await fetchFees('mainnet')).fastestFee, 9);
+  });
+});
+
+describe("finding the API on someone's own server", () => {
+  const realFetch = globalThis.fetch;
+  after(() => {
+    globalThis.fetch = realFetch;
+    setBackend({ kind: 'esplora', url: null });
+  });
+  const txid = 'cd'.repeat(32);
+  const OWN = 'https://node.example';
+
+  it('tries the mempool layout first, then a bare API at the address itself', () => {
+    assert.deepEqual(apiBaseCandidates(OWN, 'mainnet'), [`${OWN}/api`, OWN]);
+    assert.deepEqual(apiBaseCandidates(OWN, 'testnet'), [
+      `${OWN}/testnet/api`,
+      `${OWN}/testnet4/api`,
+      `${OWN}/api`,
+      OWN,
+    ]);
+  });
+
+  it('uses a mempool instance the way it always has, after one look', async () => {
+    setBackend({ kind: 'esplora', url: OWN });
+    const asked = fakeServer(OWN, { '/api': GENESIS.mainnet, '/testnet/api': GENESIS.testnet3 }, { website: true });
+    assert.equal(await fetchTxHex('mainnet', txid), '0200abcd');
+    assert.equal(await fetchTxHex('testnet', txid), '0200abcd');
+    assert.equal(await fetchTxHex('testnet', txid), '0200abcd');
+    assert.deepEqual(asked, [
+      '/api/block-height/0',
+      `/api/tx/${txid}/hex`,
+      '/testnet/api/block-height/0',
+      `/testnet/api/tx/${txid}/hex`,
+      `/testnet/api/tx/${txid}/hex`,
+    ]);
+    assert.equal(txExplorerUrl('mainnet', txid), `${OWN}/tx/${txid}`);
+    assert.equal(txExplorerUrl('testnet', txid), `${OWN}/testnet/tx/${txid}`);
+  });
+
+  it('finds a bare electrs that serves a test network at its root', async () => {
+    setBackend({ kind: 'esplora', url: `${OWN}/` });
+    const asked = fakeServer(OWN, { '': GENESIS.other });
+    assert.equal(await fetchTxHex('testnet', txid), '0200abcd');
+    assert.deepEqual(await fetchUtxos('testnet', 'tb1qexample'), []);
+    assert.equal((await fetchFees('testnet')).fastestFee, 7);
+    assert.equal(await broadcastTx('testnet', '0200abcd'), 'ab'.repeat(32));
+    assert.deepEqual(asked, [
+      '/testnet/api/block-height/0',
+      '/testnet4/api/block-height/0',
+      '/api/block-height/0',
+      '/block-height/0',
+      `/tx/${txid}/hex`,
+      '/address/tb1qexample/utxo',
+      '/v1/fees/recommended',
+      '/fee-estimates',
+      '/tx',
+    ]);
+    // No website there, and none anywhere else for a chain mempool.space lacks.
+    assert.equal(txExplorerUrl('testnet', txid), null);
+  });
+
+  it('looks once for a burst of requests, and once more after a failure has aged', async () => {
+    setBackend({ kind: 'esplora', url: OWN });
+    let asked = fakeServer(OWN, { '': GENESIS.testnet4 });
+    await Promise.all(Array.from({ length: 8 }, (_, i) => fetchUtxos('testnet', `tb1q${i}`)));
+    assert.equal(asked.filter((p) => p.endsWith('/block-height/0')).length, 4);
+
+    setBackend({ kind: 'esplora', url: OWN });
+    asked = fakeServer(OWN, {});
+    const results = await Promise.allSettled(Array.from({ length: 8 }, (_, i) => fetchUtxos('testnet', `tb1q${i}`)));
+    assert.ok(results.every((r) => r.status === 'rejected'));
+    assert.equal(asked.length, 8, 'four candidates, two questions each, asked once');
+    await assert.rejects(fetchUtxos('testnet', 'tb1q9'), /No mempool or Esplora API found at https:\/\/node\.example \(HTTP 404\)/);
+    assert.equal(asked.length, 8, 'a fresh failure is not probed again straight away');
+  });
+
+  it('opens bare-API transactions on mempool.space when it shows that chain', async () => {
+    for (const [genesis, web] of [
+      [GENESIS.testnet3, 'https://mempool.space/testnet'],
+      [GENESIS.testnet4, 'https://mempool.space/testnet4'],
+    ]) {
+      setBackend({ kind: 'esplora', url: OWN });
+      fakeServer(OWN, { '': genesis });
+      await fetchTxHex('testnet', txid);
+      assert.equal(txExplorerUrl('testnet', txid), `${web}/tx/${txid}`);
+      assert.equal(explorerName('testnet'), 'mempool.space');
+    }
+    setBackend({ kind: 'esplora', url: OWN });
+    fakeServer(OWN, { '': GENESIS.mainnet });
+    await fetchTxHex('mainnet', txid);
+    assert.equal(txExplorerUrl('mainnet', txid), `https://mempool.space/tx/${txid}`);
+  });
+
+  it('follows a path typed into the address', async () => {
+    setBackend({ kind: 'esplora', url: `${OWN}/testnet4` });
+    const asked = fakeServer(OWN, { '/api': GENESIS.mainnet, '/testnet4/api': GENESIS.testnet4 }, { website: true });
+    assert.equal(await fetchTxHex('testnet', txid), '0200abcd');
+    assert.equal(asked[asked.length - 1], `/testnet4/api/tx/${txid}/hex`);
+    assert.equal(txExplorerUrl('testnet', txid), `${OWN}/testnet4/tx/${txid}`);
+  });
+
+  it('never points a wallet at the other kind of network', async () => {
+    setBackend({ kind: 'esplora', url: OWN });
+    fakeServer(OWN, { '': GENESIS.testnet4 });
+    await assert.rejects(fetchUtxos('mainnet', 'bc1qexample'), /serves a test network, not mainnet/);
+
+    setBackend({ kind: 'esplora', url: OWN });
+    fakeServer(OWN, { '/api': GENESIS.mainnet }, { website: true });
+    await assert.rejects(fetchUtxos('testnet', 'tb1qexample'), /only serves mainnet, and this is a testnet wallet/);
+    await assert.rejects(broadcastTx('testnet', '0200abcd'), /only serves mainnet/);
+    // Fees are advisory: no server to ask means the fallback table, not an error.
+    assert.equal((await fetchFees('testnet')).fastestFee, 10);
+  });
+
+  it('accepts a server that will not look a block up by height', async () => {
+    fakeServer(OWN, { '/api': GENESIS.mainnet }, { noGenesis: true });
+    assert.deepEqual(await discoverApiLayout(OWN, 'mainnet'), { base: `${OWN}/api`, genesis: null });
+  });
+
+  it('is not fooled by a website that answers every path', async () => {
+    fakeServer(OWN, {}, { website: true });
+    await assert.rejects(discoverApiLayout(OWN, 'mainnet'), /No mempool or Esplora API found at https:\/\/node\.example\./);
+  });
+
+  it('tests a server for the network in use, and explains what it found', async () => {
+    fakeServer(OWN, { '': GENESIS.other });
+    assert.equal(await testBackend({ kind: 'esplora', url: OWN }, 'testnet'), 8325);
+    assert.equal(await fetchTipHeightFrom(`${OWN}//`, 'testnet'), 8325);
+    await assert.rejects(testBackend({ kind: 'esplora', url: OWN }, 'mainnet'), /serves a test network, not mainnet/);
+    await assert.rejects(testBackend({ kind: 'esplora', url: OWN }), /serves a test network, not mainnet/);
+
+    globalThis.fetch = (async () => {
+      throw new TypeError('Network request failed');
+    }) as typeof fetch;
+    await assert.rejects(fetchTipHeightFrom(OWN, 'testnet'), /Could not reach https:\/\/node\.example: Network request failed/);
+    globalThis.fetch = (async () => {
+      throw new TypeError('CLEARTEXT communication to node.example not permitted');
+    }) as typeof fetch;
+    await assert.rejects(fetchTipHeightFrom('http://node.example', 'testnet'), /blocks plain HTTP/);
   });
 });
