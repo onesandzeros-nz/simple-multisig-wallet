@@ -560,6 +560,7 @@ export default function WalletScreen({ navigation, route }: Props) {
           <Card>
             {history.slice(0, 15).map((h, i) => {
               const expanded = openTxid === h.txid;
+              const explorerUrl = txExplorerUrl(wallet.network, h.txid);
               return (
                 <View
                   key={h.txid}
@@ -622,21 +623,21 @@ export default function WalletScreen({ navigation, route }: Props) {
                           }}
                         />
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Button
-                          // Opens whichever explorer the wallet is pointed at,
-                          // so a self-hosted instance stays self-hosted.
-                          title={`Open in ${explorerName()}`}
-                          icon="open-outline"
-                          variant="secondary"
-                          compact
-                          onPress={() =>
-                            Linking.openURL(txExplorerUrl(wallet.network, h.txid)).catch((e) =>
-                              showError('history:open', e)
-                            )
-                          }
-                        />
-                      </View>
+                      {explorerUrl && (
+                        <View style={{ flex: 1 }}>
+                          <Button
+                            // Opens whichever explorer the wallet is pointed at,
+                            // so a self-hosted instance stays self-hosted.
+                            title={`Open in ${explorerName(wallet.network)}`}
+                            icon="open-outline"
+                            variant="secondary"
+                            compact
+                            onPress={() =>
+                              Linking.openURL(explorerUrl).catch((e) => showError('history:open', e))
+                            }
+                          />
+                        </View>
+                      )}
                     </View>
                   )}
                 </View>

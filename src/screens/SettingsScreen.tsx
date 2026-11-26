@@ -119,8 +119,9 @@ export default function SettingsScreen() {
     setTesting(true);
     setTestResult(null);
     try {
-      const height = await testBackend(draft);
-      setTestResult({ ok: true, message: `Connected — block height ${height.toLocaleString()}.` });
+      const height = await testBackend(draft, settings.testnet ? 'testnet' : 'mainnet');
+      const chain = kind === 'esplora' ? (settings.testnet ? 'testnet ' : 'mainnet ') : '';
+      setTestResult({ ok: true, message: `Connected — ${chain}block height ${height.toLocaleString()}.` });
     } catch (e: any) {
       setTestResult({ ok: false, message: e.message ?? String(e) });
     } finally {
@@ -224,7 +225,8 @@ export default function SettingsScreen() {
         </Text>
         {settings.testnet && (
           <Text style={{ color: colors.warning, fontSize: 13, lineHeight: 19, marginTop: 8 }}>
-            Your server must serve testnet too. A mempool.space-compatible URL handles both, but an
+            Your server must serve testnet too. A mempool.space-compatible URL can handle both
+            (a server that only indexes a test network works for testnet wallets), but an
             Electrum server does not — mainnet electrs listens on 50001 and a testnet index is a
             separate server, usually on 60001.
           </Text>
@@ -332,6 +334,7 @@ export default function SettingsScreen() {
             />
             <Text style={{ color: colors.inkFaint, fontSize: 12, marginTop: 6 }}>
               Any mempool.space or Esplora-compatible instance, e.g. one served by your own node.
+              A bare electrs or Esplora API address works too.
             </Text>
             {!urlOk && (
               <Text style={{ color: colors.danger, fontSize: 13, marginTop: 6 }}>

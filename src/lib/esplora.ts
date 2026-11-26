@@ -13,23 +13,86 @@ export const DEFAULT_SERVER = 'https://blockstream.info';
  * instance works — self-hosted mempool, mempool.space itself, etc.
  */
 let customServer: string | null = null;
+/**
+ * Whether to work out where the active server keeps its API rather than
+ * assume the mempool.space layout. On for a server the user runs themselves
+ * (see `resolveApiLayout`); off for the public ones, whose layout is known.
+ */
+let discoverLayout = false;
 
-export function setEsploraServer(url: string | null): void {
+export function setEsploraServer(url: string | null, options: { discover?: boolean } = {}): void {
   customServer = url ? url.trim().replace(/\/+$/, '') : null;
+  discoverLayout = customServer !== null && options.discover === true;
+  // The server may have been reconfigured since it was last looked at.
+  forgetApiLayouts();
 }
 
 export function esploraServer(): string {
   return customServer ?? DEFAULT_SERVER;
 }
 
-/** Web root for a network, e.g. https://mempool.space/testnet */
-export function esploraWebBase(network: NetworkName): string {
-  const root = esploraServer();
-  return network === 'mainnet' ? root : `${root}/testnet`;
+/** Where a server's API lives for a network, and which chain answered there. */
+export interface ApiLayout {
+  /** Everything the wallet asks for hangs off this, e.g. https://mempool.space/testnet/api */
+  base: string;
+  /** Hash of block 0 — identifies the chain. Null when the server would not say. */
+  genesis: string | null;
 }
 
-function baseUrl(network: NetworkName): string {
-  return `${esploraWebBase(network)}/api`;
+export const MAINNET_GENESIS = '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f';
+
+/** The mempool.space layout: mainnet at /api, testnet at /testnet/api. */
+function conventionalApiBase(root: string, network: NetworkName): string {
+  return network === 'mainnet' ? `${root}/api` : `${root}/testnet/api`;
+}
+
+/**
+ * Where a self-hosted server might keep its API, most conventional first.
+ * A mempool instance puts it under /api, with other networks under a prefix
+ * (/testnet, /testnet4). A bare Esplora or electrs REST server has it at the
+ * root with no prefix at all, and so does a mempool instance that indexes
+ * only a test network (under /api). The address typed into Settings may
+ * itself carry a path, which every candidate keeps.
+ */
+export function apiBaseCandidates(root: string, network: NetworkName): string[] {
+  return network === 'mainnet'
+    ? [`${root}/api`, root]
+    : [`${root}/testnet/api`, `${root}/testnet4/api`, `${root}/api`, root];
+}
+
+const layouts = new Map<string, ApiLayout>();
+const layoutsPending = new Map<string, Promise<ApiLayout>>();
+/**
+ * A wallet refresh asks for dozens of addresses; one that found no API should
+ * not probe the server again for each of them.
+ */
+const layoutFailures = new Map<string, { at: number; error: Error }>();
+const LAYOUT_FAILURE_TTL_MS = 5_000;
+
+const layoutKey = (root: string, network: NetworkName) => `${network} ${root}`;
+
+/** Drops what has been learned about server layouts, so the next call looks again. */
+export function forgetApiLayouts(): void {
+  layouts.clear();
+  layoutsPending.clear();
+  layoutFailures.clear();
+}
+
+/**
+ * Web root for a network, e.g. https://mempool.space/testnet. Null when the
+ * server turned out to be a bare API with no website in front of it.
+ */
+export function esploraWebBase(network: NetworkName): string | null {
+  const root = esploraServer();
+  const layout = discoverLayout ? layouts.get(layoutKey(root, network)) : undefined;
+  if (!layout) return network === 'mainnet' ? root : `${root}/testnet`;
+  return layout.base.endsWith('/api') ? layout.base.slice(0, -'/api'.length) : null;
+}
+
+/** The chain the active server was found to serve for a network, once known. */
+export function esploraGenesis(network: NetworkName): string | null {
+  if (!discoverLayout) return null;
+  return layouts.get(layoutKey(esploraServer(), network))?.genesis ?? null;
 }
 
 /** Give up on a stalled or unbounded response rather than hang forever. */
@@ -104,17 +167,29 @@ async function fetchWithTimeout(url: string): Promise<Response> {
   }
 }
 
-async function getText(url: string): Promise<string> {
+/**
+ * Something this module worked out about the server, already worded for the
+ * person reading it — as opposed to whatever `fetch` threw.
+ */
+class ServerFinding extends Error {}
+
+/** A GET that waits out throttling. A 429 that outlasts the retries is an error. */
+async function getResponse(url: string): Promise<Response> {
   let res = await fetchWithTimeout(url);
   for (let attempt = 0; !res.ok && isRetryable(res.status) && attempt < MAX_ATTEMPTS - 1; attempt++) {
     await sleep(retryDelayMs(res.headers.get('retry-after'), attempt));
     res = await fetchWithTimeout(url);
   }
   if (res.status === 429) {
-    throw new Error(
+    throw new ServerFinding(
       `${esploraServer()} is rate limiting this wallet. Try again in a minute, or connect your own node or an Electrum server in Settings.`
     );
   }
+  return res;
+}
+
+async function getText(url: string): Promise<string> {
+  const res = await getResponse(url);
   if (!res.ok) throw new Error(`Network error (${res.status}) talking to the server`);
   const text = await res.text();
   if (text.length > MAX_RESPONSE_BYTES) {
@@ -130,6 +205,93 @@ async function getJson<T>(url: string): Promise<T> {
   } catch {
     throw new Error('The server returned a malformed response.');
   }
+}
+
+/** One short plain-text answer from a candidate API base; null if it is not there. */
+async function probe(url: string): Promise<{ text: string } | { status: number }> {
+  const res = await getResponse(url);
+  if (!res.ok) return { status: res.status };
+  const text = (await res.text()).trim();
+  // A website answering for a path it does not have sends its front page.
+  return text.length <= 100 ? { text } : { status: res.status };
+}
+
+/**
+ * Finds where `root` serves the Esplora API for `network`, by asking each
+ * candidate for block 0. That one answer shows both that the API is there
+ * and which chain it is on, so a mainnet wallet is never pointed at a test
+ * network or the reverse. Which test network is not checked: testnet3, 4 and
+ * later share an address format, and the wallet works on any of them.
+ */
+export async function discoverApiLayout(root: string, network: NetworkName): Promise<ApiLayout> {
+  const candidates = apiBaseCandidates(root, network);
+  let otherNetwork = false;
+  let lastStatus = 0;
+  for (const base of candidates) {
+    const answer = await probe(`${base}/block-height/0`);
+    if ('status' in answer) {
+      lastStatus = answer.status;
+      continue;
+    }
+    const genesis = answer.text.toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(genesis)) continue;
+    if ((genesis === MAINNET_GENESIS) === (network === 'mainnet')) return { base, genesis };
+    otherNetwork = true;
+  }
+  if (otherNetwork) {
+    throw new ServerFinding(
+      network === 'mainnet'
+        ? `${root} serves a test network, not mainnet. It will work for testnet wallets; a mainnet wallet needs a mainnet server.`
+        : `${root} only serves mainnet, and this is a testnet wallet. Connect a server that indexes testnet in Settings.`
+    );
+  }
+  // A server that cannot look a block up by height may still be usable.
+  for (const base of candidates) {
+    const answer = await probe(`${base}/blocks/tip/height`);
+    if ('text' in answer && /^\d{1,9}$/.test(answer.text)) return { base, genesis: null };
+  }
+  const found = lastStatus && lastStatus !== 200 ? ` (HTTP ${lastStatus})` : '';
+  throw new ServerFinding(
+    `No mempool or Esplora API found at ${root}${found}. Check the server address in Settings.`
+  );
+}
+
+/** `discoverApiLayout`, remembered, and shared between calls made at once. */
+function resolveApiLayout(root: string, network: NetworkName): Promise<ApiLayout> {
+  const key = layoutKey(root, network);
+  const known = layouts.get(key);
+  if (known) return Promise.resolve(known);
+  const failed = layoutFailures.get(key);
+  if (failed && Date.now() - failed.at < LAYOUT_FAILURE_TTL_MS) return Promise.reject(failed.error);
+  let pending = layoutsPending.get(key);
+  if (!pending) {
+    pending = discoverApiLayout(root, network).then(
+      (layout) => {
+        // Unless the server was switched or reset while this was in flight.
+        if (layoutsPending.get(key) === pending) {
+          layoutsPending.delete(key);
+          layouts.set(key, layout);
+        }
+        return layout;
+      },
+      (error) => {
+        if (layoutsPending.get(key) === pending) {
+          layoutsPending.delete(key);
+          layoutFailures.set(key, { at: Date.now(), error });
+        }
+        throw error;
+      }
+    );
+    layoutsPending.set(key, pending);
+  }
+  return pending;
+}
+
+/** The URL every API call for `network` hangs off on the active server. */
+async function apiBase(network: NetworkName): Promise<string> {
+  const root = esploraServer();
+  if (!discoverLayout) return conventionalApiBase(root, network);
+  return (await resolveApiLayout(root, network)).base;
 }
 
 /**
@@ -177,15 +339,15 @@ export interface EsploraTx {
 }
 
 export function fetchAddressStats(network: NetworkName, address: string) {
-  return limited(() => getJson<EsploraAddressStats>(`${baseUrl(network)}/address/${address}`));
+  return limited(async () => getJson<EsploraAddressStats>(`${await apiBase(network)}/address/${address}`));
 }
 
 export function fetchUtxos(network: NetworkName, address: string) {
-  return limited(() => getJson<EsploraUtxo[]>(`${baseUrl(network)}/address/${address}/utxo`));
+  return limited(async () => getJson<EsploraUtxo[]>(`${await apiBase(network)}/address/${address}/utxo`));
 }
 
 export function fetchAddressTxs(network: NetworkName, address: string) {
-  return limited(() => getJson<EsploraTx[]>(`${baseUrl(network)}/address/${address}/txs`));
+  return limited(async () => getJson<EsploraTx[]>(`${await apiBase(network)}/address/${address}/txs`));
 }
 
 /**
@@ -197,7 +359,9 @@ export function fetchAddressTxs(network: NetworkName, address: string) {
 export async function fetchTxHex(network: NetworkName, txid: string): Promise<string> {
   // Never interpolate an unvalidated txid into a URL.
   if (!/^[0-9a-f]{64}$/i.test(txid)) throw new Error('That is not a transaction id.');
-  const hex = (await limited(() => getText(`${baseUrl(network)}/tx/${txid.toLowerCase()}/hex`))).trim();
+  const hex = (
+    await limited(async () => getText(`${await apiBase(network)}/tx/${txid.toLowerCase()}/hex`))
+  ).trim();
   if (!/^([0-9a-f]{2})+$/i.test(hex)) throw new Error('The server returned a malformed transaction.');
   return hex.toLowerCase();
 }
@@ -246,7 +410,12 @@ type FeeEndpoint = 'mempool' | 'esplora';
 const feeEndpointByServer = new Map<string, FeeEndpoint>();
 
 export async function fetchFees(network: NetworkName): Promise<RecommendedFees> {
-  const base = baseUrl(network);
+  let base: string;
+  try {
+    base = await apiBase(network);
+  } catch {
+    return FALLBACK_FEES;
+  }
   const known = feeEndpointByServer.get(base);
   if (known !== 'esplora') {
     try {
@@ -270,20 +439,29 @@ export async function fetchFees(network: NetworkName): Promise<RecommendedFees> 
   }
 }
 
-/** Fetches the block height from a specific server — used by Settings to test a URL. */
-export async function fetchTipHeightFrom(server: string): Promise<number> {
+/** Android refuses plain HTTP unless the build allows it. */
+function describeFetchFailure(e: any, server: string): Error {
+  const message = String(e?.message ?? e);
+  if (/CLEARTEXT/i.test(message)) {
+    return new Error('This build blocks plain HTTP. Rebuild the app to allow it (or use an https:// address).');
+  }
+  if (e?.name === 'AbortError') return new Error(`${server} did not answer in time.`);
+  return new Error(`Could not reach ${server}: ${message}`);
+}
+
+/**
+ * Checks that a server can serve wallets on `network`, and returns its block
+ * height — used by Settings to test a URL. Always looks afresh.
+ */
+export async function fetchTipHeightFrom(server: string, network: NetworkName = 'mainnet'): Promise<number> {
+  const root = server.trim().replace(/\/+$/, '');
+  let layout: ApiLayout;
   let res: Response;
   try {
-    res = await httpFetch(`${server.replace(/\/+$/, '')}/api/blocks/tip/height`);
+    layout = await discoverApiLayout(root, network);
+    res = await getResponse(`${layout.base}/blocks/tip/height`);
   } catch (e: any) {
-    const message = String(e?.message ?? e);
-    // Android refuses plain HTTP unless the build allows it.
-    if (/CLEARTEXT/i.test(message)) {
-      throw new Error(
-        'This build blocks plain HTTP. Rebuild the app to allow it (or use an https:// address).'
-      );
-    }
-    throw new Error(`Could not reach the server: ${message}`);
+    throw e instanceof ServerFinding ? e : describeFetchFailure(e, root);
   }
   if (!res.ok) throw new Error(`Server responded with ${res.status}`);
   const height = parseInt((await res.text()).trim(), 10);
@@ -369,15 +547,12 @@ export async function broadcastTxVia(
 
 /** Broadcast a raw transaction. Returns the txid. */
 export async function broadcastTx(network: NetworkName, txHex: string): Promise<string> {
+  const base = await apiBase(network);
   let res: Response;
   try {
-    res = await httpFetch(`${baseUrl(network)}/tx`, { method: 'POST', body: txHex });
+    res = await httpFetch(`${base}/tx`, { method: 'POST', body: txHex });
   } catch (e: any) {
-    const message = String(e?.message ?? e);
-    if (/CLEARTEXT/i.test(message)) {
-      throw new Error('This build blocks plain HTTP. Rebuild the app to allow it (or use an https:// address).');
-    }
-    throw new Error(`Could not reach ${esploraServer()}: ${message}`);
+    throw describeFetchFailure(e, esploraServer());
   }
   const body = await res.text();
   if (!res.ok) {
